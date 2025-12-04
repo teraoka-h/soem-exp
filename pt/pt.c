@@ -1,5 +1,5 @@
-#include "mysoem.h"
-#include "soem/utils.h"
+#include "../utils/utils.h"
+#include "soem/soem.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,6 +134,26 @@ fieldbus_start(Fieldbus *fieldbus)
    return FALSE;
 }
 
+static void
+fieldbus_stop(Fieldbus *fieldbus)
+{
+   ecx_contextt *context;
+   ec_slavet *slave;
+
+   context = &fieldbus->context;
+   /* Act on slave 0 (a virtual slave used for broadcasting) */
+   slave = context->slavelist;
+
+   printf("Requesting init state on all slaves... ");
+   slave->state = EC_STATE_INIT;
+   ecx_writestate(context, 0);
+   printf("done\n");
+
+   printf("Close socket... ");
+   ecx_close(context);
+   printf("done\n");
+}
+
 int main(int argc, char *argv[])
 {
   if (argc < 3) {
@@ -160,8 +180,10 @@ int main(int argc, char *argv[])
   int recv_end   = 5;
   int interval_usec = 20;
 
+  double cpu_hz = 1800000000.0; // 1.8GHz
+
   // init logfile
-  open_logfile("log/pt/clock_%d_%s_soem.log", repeat_cnt, id_str);
+  open_logfile("log/hc_%d_%s_soem.log", repeat_cnt, id_str);
 
   fieldbus_initialize(&fieldbus, nic);
   if (fieldbus_start(&fieldbus))
@@ -183,12 +205,12 @@ int main(int argc, char *argv[])
       ecx_send_processdata(context);
       wkc = ecx_receive_processdata(context, EC_TIMEOUTRET);
 
-      uint64_t diff_clock_send  = clocks[send_end] - clocks[send_start];
-      uint64_t diff_clock_poll  = clocks[poll_end] - clocks[poll_start];
-      uint64_t diff_clock_recv  = clocks[recv_end] - clocks[recv_start];
-      uint64_t diff_clock_total = clocks[recv_end] - clocks[send_start];
+      double sned_us = calc_processtime_us_rdtsc(0, 1, cpu_hz);
+      double poll_us = calc_processtime_us_rdtsc(2, 3, cpu_hz);
+      double recv_us = calc_processtime_us_rdtsc(4, 5, cpu_hz);
+      double rtt_us = calc_processtime_us_rdtsc(0, 5, cpu_hz);
 
-      logfile_printf("%lld,%lld,%lld,%lld\n", diff_clock_send, diff_clock_poll, diff_clock_recv, diff_clock_total);
+      logfile_printf("%.9f,%.9f,%.9f,%.9f\n", sned_us, poll_us, recv_us, rtt_us);
 
       expected_wkc = grp->outputsWKC * 2 + grp->inputsWKC;
       if (wkc == EC_NOFRAME)

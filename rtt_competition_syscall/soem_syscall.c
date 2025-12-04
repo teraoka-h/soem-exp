@@ -3,8 +3,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <time.h>
+
+#define INDEX_RTT_START 0
+#define INDEX_RTT_END 1
+#define MAX_LIST_SIZE 1000000
+double rtt_start[MAX_LIST_SIZE];
+double rtt_end[MAX_LIST_SIZE];
+
+
+void mark_trace_label(const char *label) {
+  int fd = open("/sys/kernel/debug/tracing/trace_marker", O_WRONLY);
+  if (fd >= 0) {
+    write(fd, label, strlen(label));
+    close(fd);
+  }
+}
 
 typedef struct
 {
@@ -172,18 +189,17 @@ int main(int argc, char *argv[])
   uint32_t repeat_cnt = atoi(argv[1]);
   char *id_str = argv[2];
 
-  int send_start = 0;
-  int send_end   = 1;
-  int poll_start = 2;
-  int poll_end   = 3;
-  int recv_start = 4;
-  int recv_end   = 5;
+  uint64_t rdtsc_start, rdtsc_end;
+
   int interval_usec = 20;
 
   double cpu_hz = 1800000000.0; // 1.8GHz
 
   // init logfile
-  open_logfile("log/rtt_%d_%s_soem.log", repeat_cnt, id_str);
+  open_logfile("log/rtt_%d_%s_syscall_soem.log", repeat_cnt, id_str);
+  char log_name[256];
+  sprintf(log_name, "log/pt_report_%s.log", id_str);
+  FILE *log_fp = fopen(log_name, "w");
 
   fieldbus_initialize(&fieldbus, nic);
   if (fieldbus_start(&fieldbus))
@@ -200,17 +216,19 @@ int main(int argc, char *argv[])
     printf("[INFO] Interval: %d (us)\n", interval_usec);
     printf("----- [ Round trip start ] -----\n");
 
-    for (i = 1; i <= repeat_cnt; ++i)
+    rdtsc_start = __rdtsc();
+
+    mark_trace_label("BEGIN_MEASURE");
+
+    for (i = 0; i < repeat_cnt; ++i)
     {
+      rtt_start[i] = __rdtsc();
       ecx_send_processdata(context);
       wkc = ecx_receive_processdata(context, EC_TIMEOUTRET);
-
-      double sned_us = calc_processtime_us_rdtsc(0, 1, cpu_hz);
-      double poll_us = calc_processtime_us_rdtsc(2, 3, cpu_hz);
-      double recv_us = calc_processtime_us_rdtsc(4, 5, cpu_hz);
-      double rtt_us = calc_processtime_us_rdtsc(0, 5, cpu_hz);
-
-      logfile_printf("%.9f,%.9f,%.9f,%.9f\n", sned_us, poll_us, recv_us, rtt_us);
+      rtt_end[i] = __rdtsc();
+      // double sned_us = calc_processtime_us_rdtsc(0, 1, cpu_hz);
+      // double poll_us = calc_processtime_us_rdtsc(2, 3, cpu_hz);
+      // double recv_us = calc_processtime_us_rdtsc(4, 5, cpu_hz);
 
       expected_wkc = grp->outputsWKC * 2 + grp->inputsWKC;
       if (wkc == EC_NOFRAME)
@@ -221,7 +239,17 @@ int main(int argc, char *argv[])
 
       osal_usleep(interval_usec);
     }
+
+    mark_trace_label("END_MEASURE");
+    rdtsc_end = __rdtsc();
+
   }
+
+  for (int i = 0; i < repeat_cnt; i++) {
+    logfile_printf("%.6f\n", ((rtt_end[i] - rtt_start[i]) / cpu_hz) * 1000000);
+  }
+
+  fprintf(log_fp, "measure_time: %.6f\n", (rdtsc_end - rdtsc_start) / cpu_hz);
 
   printf("\n[INFO] send cnt: %d\n", global_send_cnt);
   printf("\n[INFO] recv cnt: %d\n", global_recv_cnt);

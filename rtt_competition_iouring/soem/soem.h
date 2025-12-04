@@ -24,6 +24,5 @@
 #include "ec_eoe.h"
 #include "ec_config.h"
 #include "ec_print.h"
-#include "../../utils/utils.h"
 
 #endif /* _SOEM_H */

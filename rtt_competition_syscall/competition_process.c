@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 int main() {
-  uint64_t max = 50000000000;
+  uint64_t max = UINT64_MAX;
   volatile uint64_t sum = 0;
 
   for (uint64_t i = 0; i <= max; i++) {

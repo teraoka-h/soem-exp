@@ -1,5 +1,5 @@
 CC = gcc
-SRC = rtt_competition_syscall_soem.c
+SRC = soem_syscall.c
 TARGET = ${SRC:.c=}
 
 SOEM_SRCS = $(wildcard soem/*.c)

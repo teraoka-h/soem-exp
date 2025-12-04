@@ -1,0 +1,13 @@
+#ifndef LOG_CONFIG_H
+#define LOG_CONFIG_H
+
+#define INDEX_RTT_START 0
+#define INDEX_REQ_START 1
+#define INDEX_REQ_END 3
+#define INDEX_SEND_POLL_START 4
+#define INDEX_SEND_POLL_END 5
+#define INDEX_RECV_POLL_START 6
+#define INDEX_RECV_POLL_END 7 
+#define INDEX_RTT_END 8
+
+#endif
