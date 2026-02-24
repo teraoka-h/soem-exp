@@ -10,13 +10,22 @@
 #include "soem/soem.h"
 #include "soem/log_config.h"
 #include "../utils/utils.h"
-#include "soem_uring.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <time.h>
+
+// for dpdk
+#include <rte_eal.h>
+#include <rte_ethdev.h>
+#include <rte_cycles.h>
+#include <rte_lcore.h>
+#include <rte_mbuf.h>
+
+#define MEASURE_POLLLING 0
+#define MAX_LIST_SIZE 1000000
 
 typedef struct
 {
@@ -283,10 +292,10 @@ int main(int argc, char *argv[])
 
   // valiables for test
   char nic[10] = "enp3s0";
-  uint32_t repeat_cnt = atoi(argv[1]);
-  char *id_str = argv[2];
+  uint32_t repeat_cnt = 1000000;
+  int num_competition_process = atoi(argv[1]);
 
-  int interval_usec = 15;
+  int interval_usec = 30;
   double CPU_HZ = 1800000000.0;
 
   Fieldbus fieldbus;
@@ -296,61 +305,141 @@ int main(int argc, char *argv[])
   int wkc, expected_wkc;
 
   // init logfile
-  open_logfile("log/iouring_%d_%s_soem.log", repeat_cnt, id_str);
+  char log_name[256];
 
-  iouring_init();
-  
+  sprintf(log_name, "log/rtt_sched_syscall_nsleep_c%d.log", num_competition_process);
+
+  FILE *log_fp = fopen(log_name, "w");
+
+  if (log_fp == NULL) {
+    printf("Failed to open log files\n");
+    return 1;
+  }
+
+  // dpdk 初期化
+  int ret = rte_eal_init(argc - 1, &argv[1]);
+  if (ret < 0) {
+    rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+  }
+
+  unsigned int num_ports = rte_eth_dev_count_avail();
+  if (num_ports < 1) {
+    rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+  }
+
   fieldbus_initialize(&fieldbus, nic);
   if (fieldbus_start(&fieldbus))
   {
     int i, min_time, max_time;
     min_time = max_time = 0;
 
+    // for measure valiables
+    double rtt_sum = 0.0f;
+    double cycle_sum = 0.0f;
+    double rtt_avg = 0.0f;
+    double rtt_avg_ndelay = 0.0f;
+    double cycle_avg = 0.0f;
+    double cycle_avg_ndelay = 0.0f;
+    double processing_time = 0.0f;
+    uint64_t rdtsc_start, rdtsc_end;
+    //
+
+    // レコード用配列をなめる
+    unsigned long long dummy = 0;
+    for (int i = 0; i < MAX_IO_COUNT; i++) {
+      rtt_start[i] = dummy;
+      rtt_end[i] = dummy;
+    }
+
     context = &(fieldbus.context);
     grp = context->grouplist + fieldbus.group;
 
-    printf("\n[INFO] send cnt: %d\n", global_send_cnt);
-    printf("\n[INFO] recv cnt: %d\n", global_recv_cnt);
+    printf("[INFO] Using standard SOEM for processdata transfer\n");
+
+    printf("[INFO] send cnt: %d\n", global_send_cnt);
+    printf("[INFO] recv cnt: %d\n", global_recv_cnt);
 
     printf("----- [ Round trip start ] -----\n");
 
-    for (i = 1; i <= repeat_cnt; ++i)
+    // mark_trace_label("MEASURE_BEGIN");
+    rdtsc_start = __rdtsc();
+
+    for (i = 0; i < repeat_cnt; ++i)
     {
-      // printf("Roud Trip: %d\n", i);
+
+      #if USE_IOURING
       ecx_send_processdata_uring(context);
       wkc = ecx_receive_processdata_uring(context, EC_TIMEOUTRET);
-
-      double send_us = calc_processtime_us_rdtsc(INDEX_SEND_START, INDEX_SEND_END, CPU_HZ);
-      // double recv_us = calc_processtime_us_rdtsc(INDEX_RECV_START, INDEX_RECV_END, CPU_HZ);
-      double recv_us = calc_processtime_us_rdtsc(INDEX_SEND_START, INDEX_RECV_END, CPU_HZ);
-      double rtt_us = calc_processtime_us_rdtsc(INDEX_SEND_START, INDEX_RECV_END, CPU_HZ);
-
-      logfile_printf("%.9f,%.9f,%.9f\n", send_us, recv_us, rtt_us);
+      #else
+      ecx_send_processdata(context);
+      wkc = ecx_receive_processdata(context, EC_TIMEOUTRET);
+      #endif 
 
       expected_wkc = grp->outputsWKC * 2 + grp->inputsWKC;
       if (wkc == EC_NOFRAME)
       {
           printf("Round %d: No frame\n", i);
-      }
-      else {
-        // printf("WKC: %d\n", wkc);
+          break;
       }
 
-      osal_usleep(interval_usec);
+      io_cnt++;
+
+      delay_us_rdtsc(interval_usec, CPU_HZ);
+      // osal_usleep(interval_usec);
+      // cycle_end[i] = __rdtsc();
     }
 
+    rdtsc_end = __rdtsc();
+    // mark_trace_label("MEASURE_END");
+
+
     printf("\n[INFO] send cnt: %d\n", global_send_cnt);
-    printf("\n[INFO] recv cnt: %d\n", global_recv_cnt);
-    printf("\n[INFO] send_err cnt:  %d\n", global_send_err_cnt);
-    printf("\n[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
+    printf("[INFO] recv cnt: %d\n", global_recv_cnt);
+    printf("[INFO] send_err cnt:  %d\n", global_send_err_cnt);
+    printf("[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
     fieldbus_stop(&fieldbus);
-    
+
     iouring_deinit();
+
+    if (io_cnt != repeat_cnt) {
+      printf("Dont match io count\n");
+    }
+
+    int delay_count = 0;
+
+    for (int i = 0; i < repeat_cnt; i++) {
+      // second 
+      double rtt = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
+      fprintf(log_fp, "%.9f\n", rtt);
+
+      rtt_sum += rtt;
+      if (rtt < 500.0) {
+        rtt_avg_ndelay += rtt;
+      } 
+      else {
+        delay_count++;
+      }
+    }
+
+    rtt_avg_ndelay /= (double)(repeat_cnt - delay_count);
+    rtt_avg = rtt_sum / repeat_cnt;
+    // cycle_avg = cycle_sum / repeat_cnt;
+    processing_time = (double)(rdtsc_end - rdtsc_start) / CPU_HZ * 1000000;
+
+    fprintf(report_fp, "%d,", num_competition_process);
+    fprintf(report_fp, "%.9f,", rtt_sum);
+    fprintf(report_fp, "%.9f,", rtt_avg);
+    fprintf(report_fp, "%.9f,", rtt_avg_ndelay);
+    fprintf(report_fp, "%.9f,", processing_time);
+    fprintf(report_fp, "%.9f\n", processing_time - rtt_sum);
+    // fprintf(report_fp, "%.9f,", processing_time - cycle_sum);
+    // fprintf(report_fp, "%.9f\n", (rtt_avg + (double)interval_usec) * repeat_cnt);
+
+    fclose(report_fp);
+    fclose(log_fp);
 
     // printf("\nRoundtrip time (usec): min %d max %d\n", min_time, max_time);
   }
-
-  close_logfile();
 
   return 0;
 }

@@ -50,9 +50,26 @@
 #include "oshw.h"
 #include "osal.h"
 
+// for dpdk
+#include <rte_eal.h>
+#include <rte_ethdev.h>
+#include <rte_cycles.h>
+#include <rte_lcore.h>
+#include <rte_mbuf.h>
+
 #include "../../utils/utils.h"
-#include "../soem_uring.h"
 #include "log_config.h"
+
+// DPDK メモリプール
+uint16_t port_id = 0; // NIC が一つだけのため，ID は 0
+struct rte_mempool *mbuf_pool;
+
+#define RX_RING_SIZE 1024
+#define TX_RING_SIZE 1024
+
+#define NUM_MBUFS 8191
+#define MBUF_CACHE_SIZE 250
+#define BURST_SIZE 32
 
 /** Redundancy modes */
 enum
@@ -147,30 +164,93 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
       ecx_clear_rxbufstat(&(port->rxbufstat[0]));
       psock = &(port->sockhandle);
    }
-   /* we use RAW packet socket, with packet type ETH_P_ECAT */
-   *psock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ECAT));
-   if (*psock < 0)
-      return 0;
 
-   r = 0;
-   i = 1;
-   r |= setsockopt(*psock, SOL_SOCKET, SO_DONTROUTE, &i, sizeof(i));
-   /* connect socket to NIC by name */
-   strcpy(ifr.ifr_name, ifname);
-   r |= ioctl(*psock, SIOCGIFINDEX, &ifr);
-   ifindex = ifr.ifr_ifindex;
-   strcpy(ifr.ifr_name, ifname);
-   ifr.ifr_flags = 0;
-   /* reset flags of NIC interface */
-   r |= ioctl(*psock, SIOCGIFFLAGS, &ifr);
-   /* set flags of NIC interface, here promiscuous and broadcast */
-   ifr.ifr_flags = ifr.ifr_flags | IFF_PROMISC | IFF_BROADCAST;
-   r |= ioctl(*psock, SIOCSIFFLAGS, &ifr);
-   /* bind socket to protocol, in this case RAW EtherCAT */
-   sll.sll_family = AF_PACKET;
-   sll.sll_ifindex = ifindex;
-   sll.sll_protocol = htons(ETH_P_ECAT);
-   r |= bind(*psock, (struct sockaddr *)&sll, sizeof(sll));
+  mbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 1023, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+  if (mbuf_pool == NULL) {
+		rte_exit(EXIT_FAILURE, "[DPDK] Cannot create mbuf pool\n"); 
+  }
+
+  struct rte_eth_conf port_conf;
+  const uint16_t rx_rings = 1, tx_rings = 1;
+	uint16_t nb_rxd = RX_RING_SIZE;
+	uint16_t nb_txd = TX_RING_SIZE;
+	int retval;
+	uint16_t q;
+	struct rte_eth_dev_info dev_info;
+	struct rte_eth_txconf txconf;
+
+  if (!rte_eth_dev_is_valid_port(port_id)) {
+		printf("[DPDK] Invalid port number: %u\n", port);
+		return 0;
+	}
+
+  memset(&port_conf, 0, sizeof(struct rte_eth_conf));
+
+  retval = rte_eth_dev_info_get(port_id, &dev_info);
+	if (retval != 0) {
+		printf("Error during getting device (port %u) info: %s\n",
+				port, strerror(-retval));
+		return 0;
+	}
+
+	if (dev_info.tx_offload_capa & RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE)
+		port_conf.txmode.offloads |=
+			RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE;
+
+  retval = rte_eth_dev_configure(port_id, rx_rings, tx_rings, &port_conf);
+	if (retval != 0)
+		return 0;
+
+
+	retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
+	if (retval != 0)
+		return 0;
+
+  retval = rte_eth_rx_queue_setup(port_id, 0, nb_rxd, rte_eth_dev_socket_id(port_id), NULL, mbuf_pool);
+  if (retval < 0)
+		return 0;
+
+  txconf = dev_info.default_txconf;
+	txconf.offloads = port_conf.txmode.offloads;
+
+  retval = rte_eth_tx_queue_setup(port_id, 0, nb_txd, rte_eth_dev_socket_id(port_id), &txconf);
+  if (retval < 0)
+		return 0;
+
+  retval = rte_eth_dev_start(port_id);
+	if (retval < 0)
+		return retval;
+
+  // 自分以外の MAC アドレスのパケットも受信できるようにする (EtherCAT ならいらないかも？)
+  retval = rte_eth_promiscuous_enable(port);
+	if (retval != 0)
+		return retval;
+
+  /* we use RAW packet socket, with packet type ETH_P_ECAT */
+  //  *psock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ECAT));
+  //  if (*psock < 0)
+  //     return 0;
+
+  //  r = 0;
+  //  i = 1;
+  //  r |= setsockopt(*psock, SOL_SOCKET, SO_DONTROUTE, &i, sizeof(i));
+  //  /* connect socket to NIC by name */
+  //  strcpy(ifr.ifr_name, ifname);
+  //  r |= ioctl(*psock, SIOCGIFINDEX, &ifr);
+  //  ifindex = ifr.ifr_ifindex;
+  //  strcpy(ifr.ifr_name, ifname);
+  //  ifr.ifr_flags = 0;
+  //  /* reset flags of NIC interface */
+  //  r |= ioctl(*psock, SIOCGIFFLAGS, &ifr);
+  //  /* set flags of NIC interface, here promiscuous and broadcast */
+  //  ifr.ifr_flags = ifr.ifr_flags | IFF_PROMISC | IFF_BROADCAST;
+  //  r |= ioctl(*psock, SIOCSIFFLAGS, &ifr);
+  //  /* bind socket to protocol, in this case RAW EtherCAT */
+  //  sll.sll_family = AF_PACKET;
+  //  sll.sll_ifindex = ifindex;
+  //  sll.sll_protocol = htons(ETH_P_ECAT);
+  //  r |= bind(*psock, (struct sockaddr *)&sll, sizeof(sll));
+
    /* setup ethernet headers in tx buffers so we don't have to repeat it */
    for (i = 0; i < EC_MAXBUF; i++)
    {
@@ -189,10 +269,10 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
  */
 int ecx_closenic(ecx_portt *port)
 {
-   if (port->sockhandle >= 0)
-      close(port->sockhandle);
-   if ((port->redport) && (port->redport->sockhandle >= 0))
-      close(port->redport->sockhandle);
+  //  if (port->sockhandle >= 0)
+  //     close(port->sockhandle);
+  //  if ((port->redport) && (port->redport->sockhandle >= 0))
+  //     close(port->redport->sockhandle);
 
    return 0;
 }
@@ -286,83 +366,14 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
    }
    lp = (*stack->txbuflength)[idx];
    (*stack->rxbufstat)[idx] = EC_BUF_TX;
+
+   rtt_start[io_cnt] = __rdtsc();
+
    rval = send(*stack->sock, (*stack->txbuf)[idx], lp, 0);
    if (rval == -1)
    {
       global_send_err_cnt++;
       (*stack->rxbufstat)[idx] = EC_BUF_EMPTY;
-      return rval;
-   }
-
-   global_send_cnt++;
-  // USER CODE END
-   return rval;
-}
-
-int ecx_outframe_uring(ecx_portt *port, uint8 idx, int stacknumber)
-{
-   int lp, rval;
-   ec_stackT *stack;
-
-   if (!stacknumber)
-   {
-      stack = &(port->stack);
-   }
-   else
-   {
-      stack = &(port->redport->stack);
-   }
-   lp = (*stack->txbuflength)[idx];
-   (*stack->rxbufstat)[idx] = EC_BUF_TX;
-  //  rval = send(*stack->sock, (*stack->txbuf)[idx], lp, 0);
-
-  // USER CODE BEGIN
-  get_clock_rdtsc(INDEX_SEND_START);
-   iouring_request_send(*stack->sock, (*stack->txbuf)[idx], lp, 0);
-   rval = iouring_wait_send_completion();
-   get_clock_rdtsc(INDEX_SEND_END);
-
-   if (rval == -1)
-   {
-      (*stack->rxbufstat)[idx] = EC_BUF_EMPTY;
-      global_send_err_cnt++;
-      return rval;
-   }
-
-   global_send_cnt++;
-  // USER CODE END
-   return rval;
-}
-
-int ecx_outframe_recv_uring(ecx_portt *port, uint8 idx, int stacknumber)
-{
-   int txlp, rxlp, rval;
-   ec_stackT *stack;
-
-   if (!stacknumber)
-   {
-      stack = &(port->stack);
-   }
-   else
-   {
-      stack = &(port->redport->stack);
-   }
-   txlp = (*stack->txbuflength)[idx];
-   (*stack->rxbufstat)[idx] = EC_BUF_TX;
-  //  rval = send(*stack->sock, (*stack->txbuf)[idx], lp, 0);
-
-  // USER CODE BEGIN
-   rxlp = sizeof(port->tempinbuf);
-
-   get_clock_rdtsc(INDEX_SEND_START);
-   iouring_request_send_recv(*stack->sock, (*stack->txbuf)[idx], txlp, (*stack->tempbuf), rxlp, 0);
-   rval = iouring_wait_send_completion();
-   get_clock_rdtsc(INDEX_SEND_END);
-
-   if (rval == -1)
-   {
-      (*stack->rxbufstat)[idx] = EC_BUF_EMPTY;
-      global_send_err_cnt++;
       return rval;
    }
 
@@ -409,50 +420,6 @@ int ecx_outframe_red(ecx_portt *port, uint8 idx)
    return rval;
 }
 
-// for uring
-int ecx_outframe_red_uring(ecx_portt *port, uint8 idx)
-{
-   ec_comt *datagramP;
-   ec_etherheadert *ehp;
-   int rval;
-
-   ehp = (ec_etherheadert *)&(port->txbuf[idx]);
-   /* rewrite MAC source address 1 to primary */
-   ehp->sa1 = htons(priMAC[1]);
-   /* transmit over primary socket*/
-   rval = ecx_outframe_recv_uring(port, idx, 0);
-   if (port->redstate != ECT_RED_NONE)
-   {
-      pthread_mutex_lock(&(port->tx_mutex));
-      ehp = (ec_etherheadert *)&(port->txbuf2);
-      /* use dummy frame for secondary socket transmit (BRD) */
-      datagramP = (ec_comt *)&(port->txbuf2[ETH_HEADERSIZE]);
-      /* write index to frame */
-      datagramP->index = idx;
-      /* rewrite MAC source address 1 to secondary */
-      ehp->sa1 = htons(secMAC[1]);
-      /* transmit over secondary socket */
-      port->redport->rxbufstat[idx] = EC_BUF_TX;
-      // if (send(port->redport->sockhandle, &(port->txbuf2), port->txbuflength2, 0) == -1)
-      // {
-      //    port->redport->rxbufstat[idx] = EC_BUF_EMPTY;
-      // }
-
-      iouring_request_send(port->redport->sockhandle, &(port->txbuf2), port->txbuflength2, 0);
-      if (iouring_wait_send_completion() == -1) {
-        port->redport->rxbufstat[idx] = EC_BUF_EMPTY;
-      }
-
-      // iouring_request_send(port->redport->sockhandle, &(port->txbuf2), port->txbuflength2, 0);
-      // if (iouring_wait_send_completion() == -1) {
-      //   port->redport->rxbufstat[idx] = EC_BUF_EMPTY;
-      // }
-      pthread_mutex_unlock(&(port->tx_mutex));
-   }
-
-   return rval;
-}
-
 /** Non blocking read of socket. Put frame in temporary buffer.
  * @param[in] port        = port context struct
  * @param[in] stacknumber = 0=primary 1=secondary stack
@@ -473,53 +440,12 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
    }
    lp = sizeof(port->tempinbuf);
    bytesrx = recv(*stack->sock, (*stack->tempbuf), lp, MSG_DONTWAIT);
+   rtt_end[io_cnt] = __rdtsc();
+
    port->tempinbufs = bytesrx;
 
    return (bytesrx > 0);
 }
-
-// for uring recv request
-static int iouring_soem_recv_request(ecx_portt *port, int stacknumber) {
-  int lp, bytesrx;
-   ec_stackT *stack;
-
-   if (!stacknumber)
-   {
-      stack = &(port->stack);
-   }
-   else
-   {
-      stack = &(port->redport->stack);
-   }
-   lp = sizeof(port->tempinbuf);
-
-   get_clock_rdtsc(INDEX_RECV_START);
-   int submission = iouring_request_recv(*stack->sock, (*stack->tempbuf), lp, 0);
-}
-
-// for uring
-static int ecx_recvpkt_uring(ecx_portt *port, int stacknumber)
-{
-   int lp, bytesrx;
-   ec_stackT *stack;
-
-   if (!stacknumber)
-   {
-      stack = &(port->stack);
-   }
-   else
-   {
-      stack = &(port->redport->stack);
-   }
-   lp = sizeof(port->tempinbuf);
-  //  bytesrx = recv(*stack->sock, (*stack->tempbuf), lp, MSG_DONTWAIT);
-   bytesrx = iouring_wait_recv_completion();
-   get_clock_rdtsc(INDEX_RECV_END);
-   port->tempinbufs = bytesrx;
-
-   return (bytesrx > 0);
-}
-
 
 /** Non blocking receive frame function. Uses RX buffer and index to combine
  * read frame with transmitted frame. To compensate for received frames that
