@@ -1,5 +1,5 @@
 CC = gcc
-SRC = iouring.c
+SRC = soem_iouring.c
 TARGET = ${SRC:.c=}
 
 SOEM_SRCS = $(wildcard soem/*.c)
