@@ -307,7 +307,7 @@ int main(int argc, char *argv[])
   // init logfile
   char log_name[256];
 
-  sprintf(log_name, "log/rtt_dpdk_c%d.log", num_competition_process);
+  sprintf(log_name, "log/tsc_dpdk_c%d.log", num_competition_process);
 
   FILE *log_fp = fopen(log_name, "w");
 
@@ -400,6 +400,7 @@ int main(int argc, char *argv[])
     printf("[INFO] recv cnt: %d\n", global_recv_cnt);
     printf("[INFO] send_err cnt:  %d\n", global_send_err_cnt);
     printf("[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
+    printf("[INFO] elapsed (s): %.6f\n", (double)(rdtsc_end - rdtsc_start) / CPU_HZ);
 
     double processing_time = (rdtsc_end - rdtsc_start) / CPU_HZ;
     printf("[INFO] processing time: %.9f (s)\n", processing_time);
@@ -412,8 +413,8 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < repeat_cnt; i++) {
       // micro second
-      double rtt = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
-      fprintf(log_fp, "%.6f\n", rtt);
+      uint32_t tsc_diff = (rtt_end[i] - rtt_start[i]);
+      fprintf(log_fp, "%u\n", tsc_diff);
 
       // rtt_sum += rtt;
       // if (rtt < 500.0) {
