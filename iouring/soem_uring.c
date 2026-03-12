@@ -8,7 +8,7 @@ IOuringContext ioctx;
 int iouring_init() {
   int ret;
   #if !USE_SQPOLL
-  int ret = io_uring_queue_init(IOURING_QDEPTH, &(ioctx.ring), 0);
+  ret = io_uring_queue_init(IOURING_QDEPTH, &(ioctx.ring), 0);
   if (ret < 0) {
     fprintf(stderr, "[ERROR] io_uring_queue_init failed: %d (%s)\n",
             ret, strerror(-ret));

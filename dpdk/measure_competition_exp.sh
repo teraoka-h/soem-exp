@@ -1,7 +1,7 @@
 #!/usr/bin/zsh
 
 COMPETITION_PROCESS=./competition_process
-SOEM_PROCESS=./soem_exp
+SOEM_PROCESS=./soem_dpdk
 
 SOEM_COMM_COUNT=$1
 SOEM_LOG_FILE=$2

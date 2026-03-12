@@ -7,6 +7,8 @@
 #define REQ_ID_SEND 0
 #define REQ_ID_RECV 1
 
+#define USE_SQPOLL 1
+
 typedef struct {
   struct io_uring ring;
   struct io_uring_sqe *sq; // submission queue

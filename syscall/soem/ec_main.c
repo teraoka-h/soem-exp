@@ -18,8 +18,6 @@
 #include "osal.h"
 #include "oshw.h"
 
-#include <stdio.h>
-
 /** delay in us for eeprom ready loop */
 #define EC_LOCALDELAY 200
 
@@ -519,8 +517,6 @@ ec_mbxbuft *ecx_mbxdropqueue(ecx_contextt *context, uint8 group, int ticketloc)
  */
 uint8 ecx_siigetbyte(ecx_contextt *context, uint16 slave, uint16 address)
 {
-  // printf("[SOEM] ecx_siigetbyte()\n");
-
    uint16 configadr, eadr;
    uint64 edat64;
    uint32 edat32;
@@ -1915,8 +1911,6 @@ int ecx_writeeeprom(ecx_contextt *context, uint16 slave, uint16 eeproma, uint16 
  */
 int ecx_eeprom2master(ecx_contextt *context, uint16 slave)
 {
-  // printf("[SOEM] ecx_eeprom2mater()\n");
-
    int wkc = 1, cnt = 0;
    uint16 configadr;
    uint8 eepctl;
@@ -2162,8 +2156,6 @@ uint16 ecx_eeprom_waitnotbusyFP(ecx_contextt *context, uint16 configadr, uint16 
  */
 uint64 ecx_readeepromFP(ecx_contextt *context, uint16 configadr, uint16 eeproma, int timeout)
 {
-  // printf("[SOEM] ecx_readeepromFP()\n");
-
    uint16 estat;
    uint32 edat32;
    uint64 edat64;
@@ -2589,182 +2581,6 @@ int ecx_send_processdata_group(ecx_contextt *context, uint8 group)
    return wkc;
 }
 
-// for uring
-// int ecx_send_processdata_group_uring(ecx_contextt *context, uint8 group)
-// {
-//    uint32 LogAdr;
-//    uint16 w1, w2;
-//    int length;
-//    uint16 sublength;
-//    uint8 idx;
-//    int wkc;
-//    uint8 *data;
-//    boolean first = FALSE;
-//    uint16 currentsegment = 0;
-//    uint32 iomapinputoffset;
-//    uint16 DCO;
-
-//    wkc = 0;
-//    if (context->grouplist[group].hasdc)
-//    {
-//       first = TRUE;
-//    }
-
-//    ecx_clearmbxstatus(context, group);
-
-//    /* For overlapping IO map use the biggest */
-//    if (context->overlappedMode == TRUE)
-//    {
-//       /* For overlap IOmap make the frame EQ big to biggest part */
-//       length = (context->grouplist[group].Obytes > context->grouplist[group].Ibytes) ? context->grouplist[group].Obytes : context->grouplist[group].Ibytes;
-//       length += context->grouplist[group].mbxstatuslength;
-//       /* Save the offset used to compensate where to save inputs when frame returns */
-//       iomapinputoffset = context->grouplist[group].Obytes;
-//    }
-//    else
-//    {
-//       length = context->grouplist[group].Obytes +
-//                context->grouplist[group].Ibytes +
-//                context->grouplist[group].mbxstatuslength;
-//       iomapinputoffset = 0;
-//    }
-
-//    LogAdr = context->grouplist[group].logstartaddr;
-//    if (length)
-//    {
-
-//       wkc = 1;
-//       /* LRW blocked by one or more slaves ? */
-//       if (context->grouplist[group].blockLRW)
-//       {
-//          /* if inputs available generate LRD */
-//          if (context->grouplist[group].Ibytes)
-//          {
-//             currentsegment = context->grouplist[group].Isegment;
-//             data = context->grouplist[group].inputs;
-//             length = context->grouplist[group].Ibytes;
-//             LogAdr += context->grouplist[group].Obytes;
-//             /* segment transfer if needed */
-//             do
-//             {
-//                if (currentsegment == context->grouplist[group].Isegment)
-//                {
-//                   sublength = (uint16)(context->grouplist[group].IOsegment[currentsegment++] - context->grouplist[group].Ioffset);
-//                }
-//                else
-//                {
-//                   sublength = (uint16)context->grouplist[group].IOsegment[currentsegment++];
-//                }
-//                /* get new index */
-//                idx = ecx_getindex(&context->port);
-//                w1 = LO_WORD(LogAdr);
-//                w2 = HI_WORD(LogAdr);
-//                DCO = 0;
-//                ecx_setupdatagram(&context->port, &(context->port.txbuf[idx]), EC_CMD_LRD, idx, w1, w2, sublength, data);
-//                if (first)
-//                {
-//                   /* FPRMW in second datagram */
-//                   DCO = ecx_adddatagram(&context->port, &(context->port.txbuf[idx]), EC_CMD_FRMW, idx, FALSE,
-//                                         context->slavelist[context->grouplist[group].DCnext].configadr,
-//                                         ECT_REG_DCSYSTIME, sizeof(int64), &context->DCtime);
-//                   first = FALSE;
-//                }
-//                /* send frame */
-//                ecx_outframe_red_uring(&context->port, idx);
-//                /* push index and data pointer on stack */
-//                ecx_pushindex(context, idx, data, sublength, DCO);
-//                length -= sublength;
-//                LogAdr += sublength;
-//                data += sublength;
-//             } while (length && (currentsegment < context->grouplist[group].nsegments));
-//          }
-//          /* if outputs available generate LWR */
-//          if (context->grouplist[group].Obytes)
-//          {
-//             data = context->grouplist[group].outputs;
-//             length = context->grouplist[group].Obytes;
-//             LogAdr = context->grouplist[group].logstartaddr;
-//             currentsegment = 0;
-//             /* segment transfer if needed */
-//             do
-//             {
-//                sublength = (uint16)context->grouplist[group].IOsegment[currentsegment++];
-//                if ((length - sublength) < 0)
-//                {
-//                   sublength = (uint16)length;
-//                }
-//                /* get new index */
-//                idx = ecx_getindex(&context->port);
-//                w1 = LO_WORD(LogAdr);
-//                w2 = HI_WORD(LogAdr);
-//                DCO = 0;
-//                ecx_setupdatagram(&context->port, &(context->port.txbuf[idx]), EC_CMD_LWR, idx, w1, w2, sublength, data);
-//                if (first)
-//                {
-//                   /* FPRMW in second datagram */
-//                   DCO = ecx_adddatagram(&context->port, &(context->port.txbuf[idx]), EC_CMD_FRMW, idx, FALSE,
-//                                         context->slavelist[context->grouplist[group].DCnext].configadr,
-//                                         ECT_REG_DCSYSTIME, sizeof(int64), &context->DCtime);
-//                   first = FALSE;
-//                }
-//                /* send frame */
-//                ecx_outframe_red_uring(&context->port, idx);
-//                /* push index and data pointer on stack */
-//                ecx_pushindex(context, idx, data, sublength, DCO);
-//                length -= sublength;
-//                LogAdr += sublength;
-//                data += sublength;
-//             } while (length && (currentsegment < context->grouplist[group].nsegments));
-//          }
-//       }
-//       /* LRW can be used */
-//       else
-//       {
-//          if (context->grouplist[group].Obytes)
-//          {
-//             data = context->grouplist[group].outputs;
-//          }
-//          else
-//          {
-//             data = context->grouplist[group].inputs;
-//             /* Clear offset, don't compensate for overlapping IOmap if we only got inputs */
-//             iomapinputoffset = 0;
-//          }
-//          /* segment transfer if needed */
-//          do
-//          {
-//             sublength = (uint16)context->grouplist[group].IOsegment[currentsegment++];
-//             /* get new index */
-//             idx = ecx_getindex(&context->port);
-//             w1 = LO_WORD(LogAdr);
-//             w2 = HI_WORD(LogAdr);
-//             DCO = 0;
-//             ecx_setupdatagram(&context->port, &(context->port.txbuf[idx]), EC_CMD_LRW, idx, w1, w2, sublength, data);
-//             if (first)
-//             {
-//                /* FPRMW in second datagram */
-//                DCO = ecx_adddatagram(&context->port, &(context->port.txbuf[idx]), EC_CMD_FRMW, idx, FALSE,
-//                                      context->slavelist[context->grouplist[group].DCnext].configadr,
-//                                      ECT_REG_DCSYSTIME, sizeof(int64), &context->DCtime);
-//                first = FALSE;
-//             }
-//             /* send frame */
-//             ecx_outframe_red_uring(&context->port, idx);
-//             /* push index and data pointer on stack.
-//              * the iomapinputoffset compensate for where the inputs are stored
-//              * in the IOmap if we use an overlapping IOmap. If a regular IOmap
-//              * is used it should always be 0.
-//              */
-//             ecx_pushindex(context, idx, (data + iomapinputoffset), sublength, DCO);
-//             length -= sublength;
-//             LogAdr += sublength;
-//             data += sublength;
-//          } while (length && (currentsegment < context->grouplist[group].nsegments));
-//       }
-//    }
-
-//    return wkc;
-// }
 
 /** Receive processdata from slaves.
  * Second part from ec_send_processdata().
@@ -2853,85 +2669,6 @@ int ecx_receive_processdata_group(ecx_contextt *context, uint8 group, int timeou
    return wkc;
 }
 
-// for uring
-// int ecx_receive_processdata_group_uring(ecx_contextt *context, uint8 group, int timeout)
-// {
-//    uint8 idx;
-//    int pos;
-//    int wkc = 0, wkc2;
-//    uint16 le_wkc = 0;
-//    int valid_wkc = 0;
-//    int64 le_DCtime;
-//    ec_idxstackT *idxstack;
-//    ec_bufT *rxbuf;
-
-//    /* just to prevent compiler warning for unused group */
-//    wkc2 = group;
-
-//    idxstack = &context->idxstack;
-//    rxbuf = context->port.rxbuf;
-//    /* get first index */
-//    pos = ecx_pullindex(context);
-//    /* read the same number of frames as send */
-//    while (pos >= 0)
-//    {
-//       idx = idxstack->idx[pos];
-//       wkc2 = ecx_waitinframe_uring(&context->port, idx, timeout);
-//       /* check if there is input data in frame */
-//       if (wkc2 > EC_NOFRAME)
-//       {
-//          if ((rxbuf[idx][EC_CMDOFFSET] == EC_CMD_LRD) || (rxbuf[idx][EC_CMDOFFSET] == EC_CMD_LRW))
-//          {
-//             if (idxstack->dcoffset[pos] > 0)
-//             {
-//                memcpy(idxstack->data[pos], &(rxbuf[idx][EC_HEADERSIZE]), idxstack->length[pos]);
-//                memcpy(&le_wkc, &(rxbuf[idx][EC_HEADERSIZE + idxstack->length[pos]]), EC_WKCSIZE);
-//                wkc = etohs(le_wkc);
-//                memcpy(&le_DCtime, &(rxbuf[idx][idxstack->dcoffset[pos]]), sizeof(le_DCtime));
-//                context->DCtime = etohll(le_DCtime);
-//             }
-//             else
-//             {
-//                /* copy input data back to process data buffer */
-//                memcpy(idxstack->data[pos], &(rxbuf[idx][EC_HEADERSIZE]), idxstack->length[pos]);
-//                wkc += wkc2;
-//             }
-//             valid_wkc = 1;
-//          }
-//          else if (rxbuf[idx][EC_CMDOFFSET] == EC_CMD_LWR)
-//          {
-//             if (idxstack->dcoffset[pos] > 0)
-//             {
-//                memcpy(&le_wkc, &(rxbuf[idx][EC_HEADERSIZE + idxstack->length[pos]]), EC_WKCSIZE);
-//                /* output WKC counts 2 times when using LRW, emulate the same for LWR */
-//                wkc = etohs(le_wkc) * 2;
-//                memcpy(&le_DCtime, &(rxbuf[idx][idxstack->dcoffset[pos]]), sizeof(le_DCtime));
-//                context->DCtime = etohll(le_DCtime);
-//             }
-//             else
-//             {
-//                /* output WKC counts 2 times when using LRW, emulate the same for LWR */
-//                wkc += wkc2 * 2;
-//             }
-//             valid_wkc = 1;
-//          }
-//       }
-//       /* release buffer */
-//       ecx_setbufstat(&context->port, idx, EC_BUF_EMPTY);
-//       /* get next index */
-//       pos = ecx_pullindex(context);
-//    }
-
-//    ecx_clearindex(context);
-
-//    /* if no frames has arrived */
-//    if (valid_wkc == 0)
-//    {
-//       return EC_NOFRAME;
-//    }
-//    return wkc;
-// }
-
 /**
  * Send processdata to slaves.
  * Group number is zero (default).
@@ -2943,10 +2680,6 @@ int ecx_send_processdata(ecx_contextt *context)
    return ecx_send_processdata_group(context, 0);
 }
 
-// int ecx_send_processdata_uring(ecx_contextt *context)
-// {
-//    return ecx_send_processdata_group_uring(context, 0);
-// }
 
 /**
  * Receive processdata from slaves.
@@ -2959,8 +2692,3 @@ int ecx_receive_processdata(ecx_contextt *context, int timeout)
 {
    return ecx_receive_processdata_group(context, 0, timeout);
 }
-
-// int ecx_receive_processdata_uring(ecx_contextt *context, int timeout)
-// {
-//    return ecx_receive_processdata_group_uring(context, 0, timeout);
-// }

@@ -19,8 +19,6 @@
 #include "oshw.h"
 #include "osal.h"
 
-#include <stdio.h>
-
 /** Write data to EtherCAT datagram.
  *
  * @param[out] datagramdata   data part of datagram
@@ -159,8 +157,6 @@ int ecx_BWR(ecx_portt *port, uint16 ADP, uint16 ADO, uint16 length, void *data, 
 {
    uint8 idx;
    int wkc;
-
-  // printf("[SOEM] ecx_BWR()\n");
 
    /* get fresh index */
    idx = ecx_getindex(port);

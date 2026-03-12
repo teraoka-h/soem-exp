@@ -299,7 +299,7 @@ int main(int argc, char *argv[])
   // init logfile
   char log_name[256];
   #if !USE_SQPOLL
-  sprintf(log_name, "log/rtt_iouring_nsleep_c%d.log", num_competition_process);
+  sprintf(log_name, "log/tsc_iouring_c%d.log", num_competition_process);
   #else
   sprintf(log_name, "log/rtt_iouring_sqpoll_nsleep_c%d.log", num_competition_process);
   #endif
@@ -376,8 +376,8 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < repeat_cnt; i++) {
       // second 
-      double rtt = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
-      fprintf(log_fp, "%.6f\n", rtt);
+      uint32_t tsc_diff = (rtt_end[i] - rtt_start[i]);
+      fprintf(log_fp, "%u\n", tsc_diff);
 
       // rtt_sum += rtt;
       // if (rtt < 500.0) {

@@ -64,6 +64,7 @@
 uint16_t port_id = 0; // NIC が一つだけのため，ID は 0
 struct rte_mempool *mbuf_pool;
 struct rte_mbuf *mbufs[10];
+struct rte_ether_addr mac;
 
 #define RX_RING_SIZE 1024
 #define TX_RING_SIZE 1024
@@ -236,14 +237,15 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
 	if (retval < 0)
 		return retval;
 
-  struct rte_ether_addr addr;
-	retval = rte_eth_macaddr_get(port_id, &addr);
+	retval = rte_eth_macaddr_get(port_id, &mac);
 	if (retval != 0)
 		return retval;
 
 	printf("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
-			port_id, RTE_ETHER_ADDR_BYTES(&addr));
+			port_id, RTE_ETHER_ADDR_BYTES(&mac));
+
+  rte_eth_macaddr_get(port_id, &mac);
 
   // 自分以外の MAC アドレスのパケットも受信できるようにする (EtherCAT ならいらないかも？)
   retval = rte_eth_promiscuous_enable(port_id);
@@ -436,33 +438,29 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
   struct rte_ether_hdr *eth =
     (struct rte_ether_hdr *)(*stack->txbuf)[idx];
 
-  // NIC の MAC アドレスを パケットの src に
-  struct rte_ether_addr mac;
-  rte_eth_macaddr_get(port_id, &mac);
-
   struct rte_ether_hdr *eth_header = (struct rte_ether_hdr *)(*stack->txbuf)[idx];
   rte_ether_addr_copy(&mac, &(eth_header->src_addr));
 
   // src, dst MAC アドレス確認
-  printf("TX dst %02X:%02X:%02X:%02X:%02X:%02X\n",
-        eth->dst_addr.addr_bytes[0],
-        eth->dst_addr.addr_bytes[1],
-        eth->dst_addr.addr_bytes[2],
-        eth->dst_addr.addr_bytes[3],
-        eth->dst_addr.addr_bytes[4],
-        eth->dst_addr.addr_bytes[5]);
+  // printf("TX dst %02X:%02X:%02X:%02X:%02X:%02X\n",
+  //       eth->dst_addr.addr_bytes[0],
+  //       eth->dst_addr.addr_bytes[1],
+  //       eth->dst_addr.addr_bytes[2],
+  //       eth->dst_addr.addr_bytes[3],
+  //       eth->dst_addr.addr_bytes[4],
+  //       eth->dst_addr.addr_bytes[5]);
 
-  printf("TX src %02X:%02X:%02X:%02X:%02X:%02X\n",
-        eth->src_addr.addr_bytes[0],
-        eth->src_addr.addr_bytes[1],
-        eth->src_addr.addr_bytes[2],
-        eth->src_addr.addr_bytes[3],
-        eth->src_addr.addr_bytes[4],
-        eth->src_addr.addr_bytes[5]);
+  // printf("TX src %02X:%02X:%02X:%02X:%02X:%02X\n",
+  //       eth->src_addr.addr_bytes[0],
+  //       eth->src_addr.addr_bytes[1],
+  //       eth->src_addr.addr_bytes[2],
+  //       eth->src_addr.addr_bytes[3],
+  //       eth->src_addr.addr_bytes[4],
+  //       eth->src_addr.addr_bytes[5]);
 
   // Ether Type が EtherCAT か確認
-  printf("EtherType = 0x%04X (EtherCAT: 0x88A4)\n", rte_be_to_cpu_16(eth_header->ether_type));
-  printf("[SOEM] ecx_outfrace (lp=%d)\n", lp);
+  // printf("EtherType = 0x%04X (EtherCAT: 0x88A4)\n", rte_be_to_cpu_16(eth_header->ether_type));
+  // printf("[SOEM] ecx_outfrace (lp=%d)\n", lp);
 
   struct rte_mbuf *mbuf = rte_pktmbuf_alloc(mbuf_pool);
 
@@ -473,19 +471,19 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
 
   uint16_t nb_tx = rte_eth_tx_burst(port_id, 0, &mbuf, 1);
 
-  printf("[DPDK] Tx frame (len=%d)\n", mbuf->pkt_len);
+  // printf("[DPDK] Tx frame (len=%d)\n", mbuf->pkt_len);
 
-  struct rte_eth_stats stats;
-  rte_eth_stats_get(port_id, &stats);
+  // struct rte_eth_stats stats;
+  // rte_eth_stats_get(port_id, &stats);
 
-  printf("opackets=%"PRIu64
-        " ipackets=%"PRIu64
-        " ierrors=%"PRIu64
-        " imissed=%"PRIu64 "\n",
-        stats.opackets,
-        stats.ipackets,
-        stats.ierrors,
-        stats.imissed);
+  // printf("opackets=%"PRIu64
+  //       " ipackets=%"PRIu64
+  //       " ierrors=%"PRIu64
+  //       " imissed=%"PRIu64 "\n",
+  //       stats.opackets,
+  //       stats.ipackets,
+  //       stats.ierrors,
+  //       stats.imissed);
 
   //  rval = send(*stack->sock, (*stack->txbuf)[idx], lp, 0);
 
@@ -565,7 +563,7 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
   }
   lp = sizeof(port->tempinbuf);
 
-  printf("[DPDK] Try read Rx packet\n");
+  // printf("[DPDK] Try read Rx packet\n");
 
   while (1) {
     uint16_t nb_rx = rte_eth_rx_burst(port_id, 0, mbuf, 1);
@@ -579,7 +577,7 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
   uint16_t len = rte_pktmbuf_pkt_len(mbuf[0]);
   uint8_t *data = rte_pktmbuf_mtod(mbuf[0], uint8_t *);
 
-  printf("[DPDK] Rx frame (len=%d)\n", len);
+  // printf("[DPDK] Rx frame (len=%d)\n", len);
 
   memcpy(*stack->tempbuf, data, len);
 
@@ -848,8 +846,6 @@ int ecx_srconfirm(ecx_portt *port, uint8 idx, int timeout)
 {
    int wkc = EC_NOFRAME;
    osal_timert timer1, timer2;
-
-   printf("[SOEM] ecx_srconfirm()\n");
 
    osal_timer_start(&timer1, timeout);
    do

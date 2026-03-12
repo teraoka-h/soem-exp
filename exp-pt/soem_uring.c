@@ -5,7 +5,6 @@
 
 IOuringContext ioctx;
 
-#define USE_SQPOLL 1
 
 int iouring_init() {
   // SQPOLL によりてカーネルスレッドが監視するため、システムコール現象
@@ -116,18 +115,16 @@ int iouring_request_send_recv_sqpoll(int sock, void *txbuf, size_t txlen, void *
 
   #if !USE_SQPOLL
   submission = io_uring_submit(&(ioctx.ring));
+
+  if (submission <= 0) {
+    printf("[ERROR] fail to iouring send-recv request submission\n");
+    return -1;
+  }
+
+  return submission;
   #else
-  // submission = iouring_poll_send_completion();
-  // int completion = io_uring_wait_cqe(&(ioctx.ring), &(ioctx.cq));
-  
-
-  // if (completion < 0) {
-  //   printf("[ERROR] fail to iouring send-recv request submission\n");
-  //   return -1;
-  // }
-  #endif
-
   return 1;
+  #endif
 }
 
 int iouring_request_send(int sock, void *buf, size_t len, int flag) {

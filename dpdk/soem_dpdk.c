@@ -292,11 +292,11 @@ int main(int argc, char *argv[])
 
   // valiables for test
   char nic[10] = "enp3s0";
-  uint32_t repeat_cnt = 100;
+  uint32_t repeat_cnt = 1000000;
   int num_competition_process = atoi(argv[1]);
 
   int interval_usec = 30;
-  double CPU_HZ = 1800000000.0;
+  double CPU_HZ = 2000000000.0;
 
   Fieldbus fieldbus;
   ecx_contextt *context;
@@ -307,7 +307,7 @@ int main(int argc, char *argv[])
   // init logfile
   char log_name[256];
 
-  sprintf(log_name, "log/rtt_dpdk_nsleep_c%d.log", num_competition_process);
+  sprintf(log_name, "log/rtt_dpdk_c%d.log", num_competition_process);
 
   FILE *log_fp = fopen(log_name, "w");
 
@@ -334,13 +334,13 @@ int main(int argc, char *argv[])
     min_time = max_time = 0;
 
     // for measure valiables
-    double rtt_sum = 0.0f;
-    double cycle_sum = 0.0f;
-    double rtt_avg = 0.0f;
-    double rtt_avg_ndelay = 0.0f;
-    double cycle_avg = 0.0f;
-    double cycle_avg_ndelay = 0.0f;
-    double processing_time = 0.0f;
+    // double rtt_sum = 0.0f;
+    // double cycle_sum = 0.0f;
+    // double rtt_avg = 0.0f;
+    // double rtt_avg_ndelay = 0.0f;
+    // double cycle_avg = 0.0f;
+    // double cycle_avg_ndelay = 0.0f;
+    // double processing_time = 0.0f;
     uint64_t rdtsc_start, rdtsc_end;
     //
 
@@ -375,7 +375,7 @@ int main(int argc, char *argv[])
       wkc = ecx_receive_processdata(context, EC_TIMEOUTRET);
       #endif 
 
-      printf("!!! Round Trip !!!\n");
+      // printf("!!! Round Trip !!!\n");
 
       expected_wkc = grp->outputsWKC * 2 + grp->inputsWKC;
       if (wkc == EC_NOFRAME)
@@ -394,12 +394,15 @@ int main(int argc, char *argv[])
     rdtsc_end = __rdtsc();
     // mark_trace_label("MEASURE_END");
 
+    fieldbus_stop(&fieldbus);
 
     printf("\n[INFO] send cnt: %d\n", global_send_cnt);
     printf("[INFO] recv cnt: %d\n", global_recv_cnt);
     printf("[INFO] send_err cnt:  %d\n", global_send_err_cnt);
     printf("[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
-    fieldbus_stop(&fieldbus);
+
+    double processing_time = (rdtsc_end - rdtsc_start) / CPU_HZ;
+    printf("[INFO] processing time: %.9f (s)\n", processing_time);
 
     if (io_cnt != repeat_cnt) {
       printf("[ERROR] Don't match io count\n");
@@ -407,19 +410,19 @@ int main(int argc, char *argv[])
 
     int delay_count = 0;
 
-    // for (int i = 0; i < repeat_cnt; i++) {
-    //   // second 
-    //   double rtt = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
-    //   fprintf(log_fp, "%.9f\n", rtt);
+    for (int i = 0; i < repeat_cnt; i++) {
+      // micro second
+      double rtt = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
+      fprintf(log_fp, "%.6f\n", rtt);
 
-    //   rtt_sum += rtt;
-    //   if (rtt < 500.0) {
-    //     rtt_avg_ndelay += rtt;
-    //   } 
-    //   else {
-    //     delay_count++;
-    //   }
-    // }
+      // rtt_sum += rtt;
+      // if (rtt < 500.0) {
+      //   rtt_avg_ndelay += rtt;
+      // } 
+      // else {
+      //   delay_count++;
+      // }
+    }
 
     // rtt_avg_ndelay /= (double)(repeat_cnt - delay_count);
     // rtt_avg = rtt_sum / repeat_cnt;

@@ -8,32 +8,13 @@
  */
 
 #include "soem/soem.h"
-#include "soem/log_config.h"
 #include "../utils/utils.h"
-#include "soem_uring.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <time.h>
-
-// EXPERIMENT VALIABLES
-#define USE_IOURING 0
-
-#define MEASURE_POLLLING 0
-#define MAX_LIST_SIZE 1000000
-
-void mark_trace_label(const char *label) {
-  int fd = open("/sys/kernel/debug/tracing/trace_marker", O_WRONLY);
-  if (fd >= 0) {
-    write(fd, label, strlen(label));
-    close(fd);
-  }
-}
-
-
-// 
 
 typedef struct
 {
@@ -293,19 +274,21 @@ fieldbus_check_state(Fieldbus *fieldbus)
 
 int main(int argc, char *argv[])
 {
-  if (argc < 3) {
+  if (argc < 2) {
     printf("[ERROR] args invalid!\n");
     return 1;
   }
 
   // valiables for test
   char nic[10] = "enp3s0";
-  uint32_t repeat_cnt = atoi(argv[1]);
-  char *report_file = argv[2];
-  int num_competition_process = atoi(argv[3]);
+  // uint32_t repeat_cnt = atoi(argv[1]);
+  uint32_t repeat_cnt = 1000000;
+  int num_competition_process = atoi(argv[1]);
 
   int interval_usec = 30;
-  double CPU_HZ = 1800000000.0;
+  // double CPU_HZ = 1800000000.0;
+  double CPU_HZ = 2000000000.0;
+
 
   Fieldbus fieldbus;
   ecx_contextt *context;
@@ -314,40 +297,17 @@ int main(int argc, char *argv[])
   int wkc, expected_wkc;
 
   // init logfile
-  FILE *report_fp = fopen(report_file, "a");
+  // init logfile
   char log_name[256];
-
-  #if USE_IOURING
-  sprintf(log_name, "log/rtt_iouring_nsleep_c%d.log", num_competition_process);
-  #else 
-  sprintf(log_name, "log/rtt_sched_syscall_nsleep_c%d.log", num_competition_process);
-  #endif 
+  sprintf(log_name, "log/tsc_syscall_c%d.log", num_competition_process);
 
   FILE *log_fp = fopen(log_name, "w");
-
-  if (log_fp == NULL || report_fp == NULL) {
-    printf("Failed to open log files\n");
-    return 1;
-  }
-
-  iouring_init();
 
   fieldbus_initialize(&fieldbus, nic);
   if (fieldbus_start(&fieldbus))
   {
     int i, min_time, max_time;
     min_time = max_time = 0;
-
-    // for measure valiables
-    double rtt_sum = 0.0f;
-    double cycle_sum = 0.0f;
-    double rtt_avg = 0.0f;
-    double rtt_avg_ndelay = 0.0f;
-    double cycle_avg = 0.0f;
-    double cycle_avg_ndelay = 0.0f;
-    double processing_time = 0.0f;
-    uint64_t rdtsc_start, rdtsc_end;
-    //
 
     // レコード用配列をなめる
     unsigned long long dummy = 0;
@@ -359,92 +319,70 @@ int main(int argc, char *argv[])
     context = &(fieldbus.context);
     grp = context->grouplist + fieldbus.group;
 
-    #if USE_IOURING
-    printf("[INFO] Using io_uring for processdata transfer\n");
-    #else
-    printf("[INFO] Using standard SOEM for processdata transfer\n");
-    #endif
-
-    printf("[INFO] send cnt: %d\n", global_send_cnt);
-    printf("[INFO] recv cnt: %d\n", global_recv_cnt);
+    printf("\n[INFO] send cnt: %d\n", global_send_cnt);
+    printf("\n[INFO] recv cnt: %d\n", global_recv_cnt);
 
     printf("----- [ Round trip start ] -----\n");
 
-    // mark_trace_label("MEASURE_BEGIN");
-    rdtsc_start = __rdtsc();
+    uint64_t start_tsc = __rdtsc();
 
-    for (i = 0; i < repeat_cnt; ++i)
+    for (i = 1; i <= repeat_cnt; ++i)
     {
-
-      #if USE_IOURING
-      ecx_send_processdata_uring(context);
-      wkc = ecx_receive_processdata_uring(context, EC_TIMEOUTRET);
-      #else
+      // printf("Roud Trip: %d\n", i);
+      get_clock_rdtsc(0);
       ecx_send_processdata(context);
       wkc = ecx_receive_processdata(context, EC_TIMEOUTRET);
-      #endif 
+      get_clock_rdtsc(1);
+
+      io_cnt++;
+
+      // uint64_t diff_clock_rtt = clocks[1] - clocks[0];
+
+      // round trip time
+      // double rtt_usec = ((double)diff_clock_rtt / CPU_HZ) * 1000000;
+      // logfile_printf("%.9f\n", rtt_usec);
 
       expected_wkc = grp->outputsWKC * 2 + grp->inputsWKC;
       if (wkc == EC_NOFRAME)
       {
           printf("Round %d: No frame\n", i);
-          break;
+      }
+      else {
+        // printf("WKC: %d\n", wkc);
       }
 
-      io_cnt++;
-
-      delay_us_rdtsc(interval_usec, CPU_HZ);
       // osal_usleep(interval_usec);
-      // cycle_end[i] = __rdtsc();
+      delay_us_rdtsc(interval_usec, CPU_HZ);
     }
 
-    rdtsc_end = __rdtsc();
-    // mark_trace_label("MEASURE_END");
-
+    uint64_t end_tsc = __rdtsc();
 
     printf("\n[INFO] send cnt: %d\n", global_send_cnt);
     printf("[INFO] recv cnt: %d\n", global_recv_cnt);
     printf("[INFO] send_err cnt:  %d\n", global_send_err_cnt);
     printf("[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
+    printf("[INFO] elapsed (s): %.6f\n", (double)(end_tsc - start_tsc) / CPU_HZ);
     fieldbus_stop(&fieldbus);
 
-    iouring_deinit();
 
     if (io_cnt != repeat_cnt) {
       printf("Dont match io count\n");
     }
 
-    int delay_count = 0;
-
     for (int i = 0; i < repeat_cnt; i++) {
       // second 
-      double rtt = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
-      fprintf(log_fp, "%.9f\n", rtt);
+      uint32_t tsc_diff = (rtt_end[i] - rtt_start[i]);
+      fprintf(log_fp, "%u\n", tsc_diff);
 
-      rtt_sum += rtt;
-      if (rtt < 500.0) {
-        rtt_avg_ndelay += rtt;
-      } 
-      else {
-        delay_count++;
-      }
+      // rtt_sum += rtt;
+      // if (rtt < 500.0) {
+      //   rtt_avg_ndelay += rtt;
+      // } 
+      // else {
+      //   delay_count++;
+      // }
     }
 
-    rtt_avg_ndelay /= (double)(repeat_cnt - delay_count);
-    rtt_avg = rtt_sum / repeat_cnt;
-    // cycle_avg = cycle_sum / repeat_cnt;
-    processing_time = (double)(rdtsc_end - rdtsc_start) / CPU_HZ * 1000000;
-
-    fprintf(report_fp, "%d,", num_competition_process);
-    fprintf(report_fp, "%.9f,", rtt_sum);
-    fprintf(report_fp, "%.9f,", rtt_avg);
-    fprintf(report_fp, "%.9f,", rtt_avg_ndelay);
-    fprintf(report_fp, "%.9f,", processing_time);
-    fprintf(report_fp, "%.9f\n", processing_time - rtt_sum);
-    // fprintf(report_fp, "%.9f,", processing_time - cycle_sum);
-    // fprintf(report_fp, "%.9f\n", (rtt_avg + (double)interval_usec) * repeat_cnt);
-
-    fclose(report_fp);
     fclose(log_fp);
 
     // printf("\nRoundtrip time (usec): min %d max %d\n", min_time, max_time);

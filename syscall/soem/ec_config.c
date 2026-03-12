@@ -40,7 +40,6 @@ OSAL_THREAD_HANDLE ecx_threadh[EC_MAX_MAPT];
 
 void ecx_init_context(ecx_contextt *context)
 {
-  // printf("[SOEM] ecx_init_context()\n");
    int lp;
    context->slavecount = 0;
    /* clean ec_slave array */
@@ -58,8 +57,6 @@ void ecx_init_context(ecx_contextt *context)
 
 int ecx_detect_slaves(ecx_contextt *context)
 {
-
-  // printf("[SOEM] ecx_detect_slaves()\n");
    uint8 b;
    uint16 w;
    int wkc;
@@ -183,7 +180,7 @@ int ecx_config_init(ecx_contextt *context)
    int wkc, nSM;
    uint16 val16;
 
-  //  EC_PRINT("ec_config_init\n");
+   EC_PRINT("ec_config_init\n");
    ecx_init_context(context);
    wkc = ecx_detect_slaves(context);
    if (wkc > 0)
