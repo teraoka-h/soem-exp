@@ -2,7 +2,12 @@ CC = gcc
 SRC = soem_dpdk.c
 TARGET = ${SRC:.c=}
 
+# for time slice extension
+TSX_KERNEL_LIB_PATH = /tmp/linux-headers/include
+TSX_LIB = ../ts_ext/ts_ext.c
+
 SOEM_SRCS = $(wildcard soem/*.c)
+SOEM_SRCS += ${TSX_LIB}
 SOEM_OBJS = $(patsubst %.c, %.o, $(notdir ${SOEM_SRCS}))
 ARCHIVE_FILE = libsoem.a
 UTILS = $(wildcard ../utils/*.c)
@@ -26,7 +31,7 @@ archive: ${SOEM_OBJS}
 
 exe: archive ${SRC}
 	@echo "[INFO] Compiling executable ${TARGET}..."
-	${CC} -o ${TARGET} ${SRC} ${ARCHIVE_FILE} ${UTILS} ${CFLAGS} ${CFLAGS_DPDK} ${LDFLAGS_SHARED} -I./
+	${CC} -o ${TARGET} ${SRC} ${ARCHIVE_FILE} ${UTILS} ${CFLAGS} ${CFLAGS_DPDK} ${LDFLAGS_SHARED} -I./ -I${TSX_KERNEL_LIB_PATH}
 
 clean:
 	rm -f ${TARGET} ${ARCHIVE_FILE} ${SOEM_OBJS} 

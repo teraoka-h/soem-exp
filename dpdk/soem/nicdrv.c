@@ -59,6 +59,11 @@
 
 #include "../../utils/utils.h"
 #include "log_config.h"
+#include "../exp_config.h"
+
+#if USE_TSX
+#include "../../ts_ext/ts_ext.h"
+#endif
 
 // DPDK メモリプール
 uint16_t port_id = 0; // NIC が一つだけのため，ID は 0
@@ -421,6 +426,8 @@ void ecx_setbufstat(ecx_portt *port, uint8 idx, int bufstat)
  */
 int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
 {
+  // printf("[SOEM] send frame.\n");
+
    int lp, rval;
    ec_stackT *stack;
 
@@ -466,6 +473,10 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
 
   uint8_t *dst = rte_pktmbuf_append(mbuf, lp);
   rte_memcpy(dst, (*stack->txbuf)[idx], lp);
+
+  #if USE_TSX
+   ts_ext_set_request(1);
+  #endif
 
   rtt_start[io_cnt] = __rdtsc();
 
@@ -573,6 +584,27 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
 
 //  bytesrx = recv(*stack->sock, (*stack->tempbuf), lp, MSG_DONTWAIT);
   rtt_end[io_cnt] = __rdtsc();
+
+  #if USE_TSX
+   if (ts_ext_is_granted()) {
+      // time slice extension granted, yield to other process
+      int ret = ts_ext_rseq_yield();
+
+      tsx_io_list[global_tsx_granted_cnt] = io_cnt;
+
+      if (ret < 0) {
+        tsx_io_list[global_tsx_granted_err_cnt] = io_cnt;
+        global_tsx_granted_err_cnt++;
+        //  printf("[ERROR] failed to yield to other process (io: %d)\n", io_cnt);
+      }
+      else {
+          global_tsx_granted_cnt++;
+          // printf("[TSX] Yielded to other process io_%d\n", io_cnt);
+      }
+   }
+
+   ts_ext_set_request(0);
+  #endif
 
   uint16_t len = rte_pktmbuf_pkt_len(mbuf[0]);
   uint8_t *data = rte_pktmbuf_mtod(mbuf[0], uint8_t *);

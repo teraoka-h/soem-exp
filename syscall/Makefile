@@ -2,7 +2,11 @@ CC = gcc
 SRC = soem_syscall.c
 TARGET = ${SRC:.c=}
 
+TSX_KERNEL_LIB_PATH = /tmp/linux-headers/include
+TSX_LIB = ../ts_ext/ts_ext.c
+
 SOEM_SRCS = $(wildcard soem/*.c)
+SOEM_SRCS += ${TSX_LIB}
 SOEM_OBJS = $(patsubst %.c, %.o, $(notdir ${SOEM_SRCS}))
 ARCHIVE_FILE = libsoem.a
 UTILS = $(wildcard ../utils/*.c)
@@ -17,4 +21,4 @@ archive: ${SOEM_OBJS}
 	rm ${SOEM_OBJS}
 
 exe: archive ${SRC}
-	${CC} -o ${TARGET} ${SRC} ${ARCHIVE_FILE} ${UTILS} ${CFLAGS} -I./
+	${CC} -o ${TARGET} ${SRC} ${ARCHIVE_FILE} ${UTILS} ${CFLAGS} -I./ -I${TSX_KERNEL_LIB_PATH}

@@ -53,6 +53,11 @@
 #include "../../utils/utils.h"
 #include "../soem_uring.h"
 #include "log_config.h"
+#include "../exp_config.h"
+
+#if USE_TSX
+#include "../../ts_ext/ts_ext.h"
+#endif
 
 /** Redundancy modes */
 enum
@@ -352,9 +357,21 @@ int ecx_outframe_recv_uring(ecx_portt *port, uint8 idx, int stacknumber)
   // USER CODE BEGIN
    rxlp = sizeof(port->tempinbuf);
 
+  #if USE_TSX
+   // request time slice extension
+   ts_ext_set_request(1);
+
+  //  printf("[TSX] Before send: \n");
+  //  printf("request=%d granted=%d cpu_id=%d\n",
+  //      rseq_tsx->slice_ctrl.request,
+  //      rseq_tsx->slice_ctrl.granted,
+  //      rseq_tsx->cpu_id);
+   #endif
+
    rtt_start[io_cnt] = __rdtsc();
 
    iouring_request_send_recv(*stack->sock, (*stack->txbuf)[idx], txlp, (*stack->tempbuf), rxlp, 0);
+
    rval = iouring_poll_send_completion();
     // rval = iouring_wait_send_completion();
 
@@ -514,6 +531,27 @@ static int ecx_recvpkt_uring(ecx_portt *port, int stacknumber)
    bytesrx = iouring_poll_recv_completion();
 
    rtt_end[io_cnt] = __rdtsc();
+
+   #if USE_TSX
+   if (ts_ext_is_granted()) {
+      // time slice extension granted, yield to other process
+      int ret = ts_ext_rseq_yield();
+
+      tsx_io_list[global_tsx_granted_cnt] = io_cnt;
+
+      if (ret < 0) {
+        tsx_io_list[global_tsx_granted_err_cnt] = io_cnt;
+        global_tsx_granted_err_cnt++;
+        //  printf("[ERROR] failed to yield to other process (io: %d)\n", io_cnt);
+      }
+      else {
+          global_tsx_granted_cnt++;
+          // printf("[TSX] Yielded to other process io_%d\n", io_cnt);
+      }
+   }
+
+   ts_ext_set_request(0);
+  #endif
 
     if (bytesrx == -1) {
       global_recv_err_cnt++;

@@ -55,7 +55,7 @@ echo "--- COMPETITION: process: $COMPETITION_COUNT"
   done
 
 # soem processを起動
-sudo nice -n 0 ${SOEM_PROCESS} ${COMPETITION_COUNT}
+GLIBC_TUNABLES=glibc.pthread.rseq=0 nice -n 0 ${SOEM_PROCESS} ${COMPETITION_COUNT}
 
 # 競合プロセスを全て終了
 sudo pkill -KILL -f ${COMPETITION_PROCESS}

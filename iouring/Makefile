@@ -2,7 +2,12 @@ CC = gcc
 SRC = soem_iouring.c
 TARGET = ${SRC:.c=}
 
+# for time slice extension
+TSX_KERNEL_LIB_PATH = /tmp/linux-headers/include
+TSX_LIB = ../ts_ext/ts_ext.c
+
 SOEM_SRCS = $(wildcard soem/*.c)
+SOEM_SRCS += ${TSX_LIB}
 SOEM_OBJS = $(patsubst %.c, %.o, $(notdir ${SOEM_SRCS}))
 IOURING_SRCS = soem_uring.c
 ARCHIVE_FILE = libsoem.a
@@ -18,4 +23,4 @@ archive: ${SOEM_OBJS}
 	rm ${SOEM_OBJS}
 
 exe: archive ${SRC}
-	${CC} -o ${TARGET} ${SRC} ${ARCHIVE_FILE} ${IOURING_SRCS} ${UTILS} ${CFLAGS} -I./ -luring
+	${CC} -o ${TARGET} ${SRC} ${ARCHIVE_FILE} ${IOURING_SRCS} ${UTILS} ${CFLAGS} -I./ -luring -I${TSX_KERNEL_LIB_PATH}

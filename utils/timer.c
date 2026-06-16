@@ -36,6 +36,3 @@ void save_unix_timestamp(int index) {
 }
 
 // for process time
-double calc_processtime_us_rdtsc(int index_start, int index_end, double cpu_hz) {
-  return ((double)(rdtsc_clocks[index_end] - rdtsc_clocks[index_start]) / cpu_hz) * 1000000;
-}

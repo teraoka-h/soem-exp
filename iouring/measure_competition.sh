@@ -3,22 +3,12 @@
 COMPETITION_PROCESS=./competition_process
 SOEM_PROCESS=./soem_iouring
 
-# SOEM_COMM_COUNT=$1
-# SOEM_LOG_PREFIX=$2
 COMPETITION_COUNT=$1
+TSX_US=$2
 
 echo "--- SOEM: loop-cnt=$SOEM_COMM_COUNT, prefix=$SOEM_LOG_PREFIX"
 echo "--- COMPETITION: process: $COMPETITION_COUNT"
 
-# # 指定個数だけ競合プロセスを起動
-# for i in {1..$COMPETITION_COUNT} 
-# do 
-#   systemd-run --scope ${COMPETITION_PROCESS} &
-#   pid=$!
-#   renice -n 0 -p "$pid"
-#   nice=
-#   # ${COMPETITION_PROCESS} &
-# done
 
 # 指定個数だけ競合プロセスを起動
   if [ $COMPETITION_COUNT -ne 0 ]; then
@@ -30,8 +20,6 @@ echo "--- COMPETITION: process: $COMPETITION_COUNT"
       renice -n 0 -p "$pid"
     done
   fi
-
-  # PROC_REAL_PATH=$(readlink -f ${COMPETITION_PROCESS})
 
   retry=0
   max_retry=10
@@ -55,7 +43,7 @@ echo "--- COMPETITION: process: $COMPETITION_COUNT"
   done
 
 # soem processを起動
-sudo nice -n 0 ${SOEM_PROCESS} ${COMPETITION_COUNT}
+GLIBC_TUNABLES=glibc.pthread.rseq=0 nice -n 0 ${SOEM_PROCESS} ${COMPETITION_COUNT} ${TSX_US}
 
 # 競合プロセスを全て終了
 sudo pkill -KILL -f ${COMPETITION_PROCESS}

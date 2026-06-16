@@ -52,6 +52,11 @@
 
 #include "../../utils/utils.h"
 #include "log_config.h"
+#include "../exp_config.h"
+
+#if USE_TSX
+#include "../../ts_ext/ts_ext.h"
+#endif
 
 /** Redundancy modes */
 enum
@@ -286,6 +291,17 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
    lp = (*stack->txbuflength)[idx];
    (*stack->rxbufstat)[idx] = EC_BUF_TX;
 
+   #if USE_TSX
+   // request time slice extension
+   ts_ext_set_request(1);
+
+  //  printf("[TSX] Before send: \n");
+  //  printf("request=%d granted=%d cpu_id=%d\n",
+  //      rseq_tsx->slice_ctrl.request,
+  //      rseq_tsx->slice_ctrl.granted,
+  //      rseq_tsx->cpu_id);
+   #endif
+
    rtt_start[io_cnt] = __rdtsc();
 
    rval = send(*stack->sock, (*stack->txbuf)[idx], lp, 0);
@@ -295,6 +311,14 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
       (*stack->rxbufstat)[idx] = EC_BUF_EMPTY;
       return rval;
    }
+
+   #if USE_TSX
+  //  printf("[TSX] After send: \n");
+  //  printf("request=%d granted=%d cpu_id=%d\n",
+  //      rseq_tsx->slice_ctrl.request,
+  //      rseq_tsx->slice_ctrl.granted,
+  //      rseq_tsx->cpu_id);
+   #endif
 
    global_send_cnt++;
   // USER CODE END
@@ -358,9 +382,30 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
       stack = &(port->redport->stack);
    }
    lp = sizeof(port->tempinbuf);
+
    bytesrx = recv(*stack->sock, (*stack->tempbuf), lp, MSG_DONTWAIT);
 
    rtt_end[io_cnt] = __rdtsc();
+
+   #if USE_TSX
+   if (ts_ext_is_granted()) {
+      // time slice extension granted, yield to other process
+      int ret = ts_ext_rseq_yield();
+
+      tsx_io_list[global_tsx_granted_cnt] = io_cnt;
+
+      if (ret < 0) {
+        global_tsx_granted_err_cnt++;
+         printf("[ERROR] failed to yield to other process\n");
+      }
+
+      else {
+          global_tsx_granted_cnt++;
+      }
+   }
+
+   ts_ext_set_request(0);
+  #endif
 
    port->tempinbufs = bytesrx;
 

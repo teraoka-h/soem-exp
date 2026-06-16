@@ -24,7 +24,16 @@ extern struct timespec tmp_timespec;
 void init_base_time(void);
 void save_unix_timestamp(int index);
 
-double calc_processtime_us_rdtsc(int index_start, int index_end, double cpu_hz);
+double calc_processtime_us_rdtsc(int rtt_start, int rtt_end, double cpu_hz);
+
+//for delay
+inline void delay_us_rdtsc(uint32_t usec, double cpu_hz) {
+  unsigned long long start = __rdtsc();
+  unsigned long long  delay_clocks = (uint64_t)((double)usec * cpu_hz / 1000000.0);
+  while ((__rdtsc() - start) < delay_clocks) {
+    // busy wait
+  }
+}
 
 
 #endif
