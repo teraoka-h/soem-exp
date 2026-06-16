@@ -10,6 +10,11 @@
 #include "soem/soem.h"
 #include "../utils/utils.h"
 #include "soem_uring.h"
+#include "exp_config.h"
+
+#if USE_TSX
+#include "../ts_ext/ts_ext.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -275,7 +280,7 @@ fieldbus_check_state(Fieldbus *fieldbus)
 
 int main(int argc, char *argv[])
 {
-  if (argc < 2) {
+  if (argc < 3) {
     printf("[ERROR] args invalid!\n");
     return 1;
   }
@@ -285,9 +290,10 @@ int main(int argc, char *argv[])
   // uint32_t repeat_cnt = atoi(argv[1]);
   uint32_t repeat_cnt = 1000000;
   int num_competition_process = atoi(argv[1]);
+  int tsx_us = atoi(argv[2]);
 
   int interval_usec = 30;
-  double CPU_HZ = 1800000000.0;
+  double CPU_HZ = 2000000000.0;
 
   Fieldbus fieldbus;
   ecx_contextt *context;
@@ -299,7 +305,7 @@ int main(int argc, char *argv[])
   // init logfile
   char log_name[256];
   #if !USE_SQPOLL
-  sprintf(log_name, "log/tsc_iouring_c%d.log", num_competition_process);
+  sprintf(log_name, "log/tsx_%dus/rtt_iouring_c%d.log", tsx_us, num_competition_process);
   #else
   sprintf(log_name, "log/rtt_iouring_sqpoll_nsleep_c%d.log", num_competition_process);
   #endif
@@ -311,6 +317,14 @@ int main(int argc, char *argv[])
     perror("[ERROR] fail to iouring init");
     return 1;
   }
+
+  #if USE_TSX
+  if (ts_ext_init() < 0) {
+    printf("[ERROR] failed to initialize time slice extension\n");
+    return 1;
+  }
+  printf("[INFO] time slice extension initialized\n");
+  #endif
   
   fieldbus_initialize(&fieldbus, nic);
   if (fieldbus_start(&fieldbus))
@@ -366,6 +380,15 @@ int main(int argc, char *argv[])
     printf("\n[INFO] recv cnt: %d\n", global_recv_cnt);
     printf("\n[INFO] send_err cnt:  %d\n", global_send_err_cnt);
     printf("\n[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
+    #if USE_TSX
+    printf("\n[INFO] tsx granted cnt:  %d\n", global_tsx_granted_cnt);
+    printf("\n[INFO] tsx granted err cnt:  %d\n", global_tsx_granted_err_cnt);
+    #endif
+
+    // for (int i = 0; i < global_tsx_granted_err_cnt; i++) {
+    //   printf("  tsx cannot granted: %d\n", tsx_io_list[i]);
+    // }
+
     fieldbus_stop(&fieldbus);
     
     iouring_deinit();
@@ -376,8 +399,8 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < repeat_cnt; i++) {
       // second 
-      uint32_t tsc_diff = (rtt_end[i] - rtt_start[i]);
-      fprintf(log_fp, "%u\n", tsc_diff);
+      double rtt_usec = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
+      fprintf(log_fp, "%.9f\n", rtt_usec);
 
       // rtt_sum += rtt;
       // if (rtt < 500.0) {

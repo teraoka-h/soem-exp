@@ -9,6 +9,11 @@
 
 #include "soem/soem.h"
 #include "../utils/utils.h"
+#include "exp_config.h"
+
+#if USE_TSX
+#include "../ts_ext/ts_ext.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -297,11 +302,22 @@ int main(int argc, char *argv[])
   int wkc, expected_wkc;
 
   // init logfile
-  // init logfile
   char log_name[256];
-  sprintf(log_name, "log/tsc_syscall_c%d.log", num_competition_process);
+  sprintf(log_name, "log/rtt_syscall_tsx_5us_c%d.log", num_competition_process);
 
   FILE *log_fp = fopen(log_name, "w");
+  if (log_fp == NULL) {
+    printf("[ERROR] failed to open log file: %s\n", log_name);
+    return 1;
+  }
+
+  #if USE_TSX
+  if (ts_ext_init() < 0) {
+    printf("[ERROR] failed to initialize time slice extension\n");
+    return 1;
+  }
+  printf("[INFO] time slice extension initialized\n");
+  #endif
 
   fieldbus_initialize(&fieldbus, nic);
   if (fieldbus_start(&fieldbus))
@@ -329,18 +345,12 @@ int main(int argc, char *argv[])
     for (i = 1; i <= repeat_cnt; ++i)
     {
       // printf("Roud Trip: %d\n", i);
-      get_clock_rdtsc(0);
+      // get_clock_rdtsc(0);
       ecx_send_processdata(context);
       wkc = ecx_receive_processdata(context, EC_TIMEOUTRET);
-      get_clock_rdtsc(1);
+      // get_clock_rdtsc(1);
 
       io_cnt++;
-
-      // uint64_t diff_clock_rtt = clocks[1] - clocks[0];
-
-      // round trip time
-      // double rtt_usec = ((double)diff_clock_rtt / CPU_HZ) * 1000000;
-      // logfile_printf("%.9f\n", rtt_usec);
 
       expected_wkc = grp->outputsWKC * 2 + grp->inputsWKC;
       if (wkc == EC_NOFRAME)
@@ -357,22 +367,34 @@ int main(int argc, char *argv[])
 
     uint64_t end_tsc = __rdtsc();
 
-    printf("\n[INFO] send cnt: %d\n", global_send_cnt);
+    printf("\n[INFO] io_cnt: %lu\n", io_cnt);
+    printf("[INFO] send cnt: %d\n", global_send_cnt);
     printf("[INFO] recv cnt: %d\n", global_recv_cnt);
     printf("[INFO] send_err cnt:  %d\n", global_send_err_cnt);
     printf("[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
     printf("[INFO] elapsed (s): %.6f\n", (double)(end_tsc - start_tsc) / CPU_HZ);
+
+    #if USE_TSX
+    printf("\n[INFO] tsx granted cnt:  %d\n", global_tsx_granted_cnt);
+    printf("\n[INFO] tsx granted err cnt:  %d\n", global_tsx_granted_err_cnt);
+    #endif
+
+
     fieldbus_stop(&fieldbus);
 
+    printf("----- [ Round trip end ] -----\n");
 
     if (io_cnt != repeat_cnt) {
       printf("Dont match io count\n");
     }
 
+    printf("[INFO] Before writing log\n");
+
     for (int i = 0; i < repeat_cnt; i++) {
-      // second 
-      uint32_t tsc_diff = (rtt_end[i] - rtt_start[i]);
-      fprintf(log_fp, "%u\n", tsc_diff);
+      // second round trip time
+      double rtt_usec = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
+      // printf("Round %d: RTT = %.3f usec\n", i, rtt_usec);
+      fprintf(log_fp, "%.9f\n", rtt_usec);
 
       // rtt_sum += rtt;
       // if (rtt < 500.0) {
@@ -382,6 +404,8 @@ int main(int argc, char *argv[])
       //   delay_count++;
       // }
     }
+
+    printf("[INFO] Finished writing log\n");
 
     fclose(log_fp);
 

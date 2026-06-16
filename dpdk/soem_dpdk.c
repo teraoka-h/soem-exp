@@ -24,6 +24,12 @@
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
 
+#include "exp_config.h"
+
+#if USE_TSX
+#include "../ts_ext/ts_ext.h"
+#endif
+
 #define MEASURE_POLLLING 0
 #define MAX_LIST_SIZE 1000000
 
@@ -285,7 +291,7 @@ fieldbus_check_state(Fieldbus *fieldbus)
 
 int main(int argc, char *argv[])
 {
-  if (argc < 2) {
+  if (argc < 3) {
     printf("[ERROR] args invalid!\n");
     return 1;
   }
@@ -294,6 +300,7 @@ int main(int argc, char *argv[])
   char nic[10] = "enp3s0";
   uint32_t repeat_cnt = 1000000;
   int num_competition_process = atoi(argv[1]);
+  int tsx_us = atoi(argv[2]);
 
   int interval_usec = 30;
   double CPU_HZ = 2000000000.0;
@@ -307,7 +314,7 @@ int main(int argc, char *argv[])
   // init logfile
   char log_name[256];
 
-  sprintf(log_name, "log/tsc_dpdk_c%d.log", num_competition_process);
+  sprintf(log_name, "log/tsx_%dus/rtt_dpdk_tsx_c%d.log", tsx_us, num_competition_process);
 
   FILE *log_fp = fopen(log_name, "w");
 
@@ -326,6 +333,14 @@ int main(int argc, char *argv[])
   if (num_ports < 1) {
     rte_exit(EXIT_FAILURE, "[ERROR] Cannot fing available port\n");
   }
+
+  #if USE_TSX
+  if (ts_ext_init() < 0) {
+    printf("[ERROR] failed to initialize time slice extension\n");
+    return 1;
+  }
+  printf("[INFO] time slice extension initialized\n");
+  #endif
 
   fieldbus_initialize(&fieldbus, nic);
   if (fieldbus_start(&fieldbus))
@@ -401,6 +416,10 @@ int main(int argc, char *argv[])
     printf("[INFO] send_err cnt:  %d\n", global_send_err_cnt);
     printf("[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
     printf("[INFO] elapsed (s): %.6f\n", (double)(rdtsc_end - rdtsc_start) / CPU_HZ);
+    #if USE_TSX
+    printf("\n[INFO] tsx granted cnt:  %d\n", global_tsx_granted_cnt);
+    printf("\n[INFO] tsx granted err cnt:  %d\n", global_tsx_granted_err_cnt);
+    #endif
 
     double processing_time = (rdtsc_end - rdtsc_start) / CPU_HZ;
     printf("[INFO] processing time: %.9f (s)\n", processing_time);
@@ -413,8 +432,8 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < repeat_cnt; i++) {
       // micro second
-      uint32_t tsc_diff = (rtt_end[i] - rtt_start[i]);
-      fprintf(log_fp, "%u\n", tsc_diff);
+      double rtt_usec = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
+      fprintf(log_fp, "%.9f\n", rtt_usec);
 
       // rtt_sum += rtt;
       // if (rtt < 500.0) {
