@@ -280,7 +280,7 @@ fieldbus_check_state(Fieldbus *fieldbus)
 
 int main(int argc, char *argv[])
 {
-  if (argc < 3) {
+  if (argc < 2) {
     printf("[ERROR] args invalid!\n");
     return 1;
   }
@@ -290,7 +290,8 @@ int main(int argc, char *argv[])
   // uint32_t repeat_cnt = atoi(argv[1]);
   uint32_t repeat_cnt = 1000000;
   int num_competition_process = atoi(argv[1]);
-  int tsx_us = atoi(argv[2]);
+  // int tsx_us = atoi(argv[2]);
+  int log_num = atoi(argv[2]);
 
   int interval_usec = 30;
   double CPU_HZ = 2000000000.0;
@@ -305,12 +306,21 @@ int main(int argc, char *argv[])
   // init logfile
   char log_name[256];
   #if !USE_SQPOLL
-  sprintf(log_name, "log/tsx_%dus/rtt_iouring_c%d.log", tsx_us, num_competition_process);
+  sprintf(log_name, "log/tsx_0us/rtt_iouring_c%d_%d.log", num_competition_process, log_num);
   #else
   sprintf(log_name, "log/rtt_iouring_sqpoll_nsleep_c%d.log", num_competition_process);
   #endif
 
   FILE *log_fp = fopen(log_name, "w");
+  // tsx log file
+  #if USE_TSX
+  FILE *tsx_log_fp = fopen("log/tsx_grant.log", "a");
+  #endif
+
+  if (log_fp == NULL) {
+    printf("[ERROR] failed to open log file: %s\n", log_name);
+    return 1;
+  }
 
   int ret = iouring_init();
   if (ret < 0) {
@@ -347,6 +357,8 @@ int main(int argc, char *argv[])
 
     printf("----- [ Round trip start ] -----\n");
 
+    uint64_t tsc_start = __rdtsc();
+
     for (i = 1; i <= repeat_cnt; ++i)
     {
       // printf("Roud Trip: %d\n", i);
@@ -376,10 +388,13 @@ int main(int argc, char *argv[])
       delay_us_rdtsc(interval_usec, CPU_HZ);
     }
 
+    uint64_t tsc_end = __rdtsc();
+
     printf("\n[INFO] send cnt: %d\n", global_send_cnt);
-    printf("\n[INFO] recv cnt: %d\n", global_recv_cnt);
-    printf("\n[INFO] send_err cnt:  %d\n", global_send_err_cnt);
-    printf("\n[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
+    printf("[INFO] recv cnt: %d\n", global_recv_cnt);
+    printf("[INFO] send_err cnt:  %d\n", global_send_err_cnt);
+    printf("[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
+    printf("[INFO] RTT elapsed (us): %.6f\n", (tsc_end - tsc_start) / CPU_HZ * 1000000);
     #if USE_TSX
     printf("\n[INFO] tsx granted cnt:  %d\n", global_tsx_granted_cnt);
     printf("\n[INFO] tsx granted err cnt:  %d\n", global_tsx_granted_err_cnt);
@@ -400,18 +415,18 @@ int main(int argc, char *argv[])
     for (int i = 0; i < repeat_cnt; i++) {
       // second 
       double rtt_usec = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
-      fprintf(log_fp, "%.9f\n", rtt_usec);
-
-      // rtt_sum += rtt;
-      // if (rtt < 500.0) {
-      //   rtt_avg_ndelay += rtt;
-      // } 
-      // else {
-      //   delay_count++;
-      // }
+      fprintf(log_fp, "%.6f\n", rtt_usec);
     }
 
+    #if USE_TSX
+    fprintf(tsx_log_fp, "tsx=%dus,comp=%d,granted=%d,denied=%d\n", tsx_us, num_competition_process, global_tsx_granted_cnt, global_tsx_granted_err_cnt);
+    #endif
+
     fclose(log_fp);
+
+    #if USE_TSX
+    fclose(tsx_log_fp);
+    #endif
 
     // printf("\nRoundtrip time (usec): min %d max %d\n", min_time, max_time);
   }

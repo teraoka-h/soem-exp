@@ -89,9 +89,9 @@ fieldbus_start(Fieldbus *fieldbus)
       printf("no socket connection\n");
       return FALSE;
    }
-   printf("done\n");
+  //  printf("done\n");
 
-   printf("Finding autoconfig slaves...\n");
+  //  printf("Finding autoconfig slaves...\n");
    if (ecx_config_init(context) <= 0)
    {
       printf("no slaves found\n");
@@ -99,32 +99,32 @@ fieldbus_start(Fieldbus *fieldbus)
    }
    printf("%d slaves found\n", context->slavecount);
 
-   printf("Sequential mapping of I/O...\n");
+  //  printf("Sequential mapping of I/O...\n");
    ecx_config_map_group(context, fieldbus->map, fieldbus->group);
-   printf("mapped %dO+%dI bytes from %d segments\n",
-          grp->Obytes, grp->Ibytes, grp->nsegments);
+  //  printf("mapped %dO+%dI bytes from %d segments\n",
+          // grp->Obytes, grp->Ibytes, grp->nsegments);
    if (grp->nsegments > 1)
    {
       /* Show how slaves are distributed */
       for (i = 0; i < grp->nsegments; ++i)
       {
-         printf("%s%d", i == 0 ? " (" : "+", grp->IOsegment[i]);
+        //  printf("%s%d", i == 0 ? " (" : "+", grp->IOsegment[i]);
       }
-      printf(" slaves)");
+      // printf(" slaves)");
    }
-   printf("\n");
+  //  printf("\n");
 
-   printf("Configuring distributed clock... ");
+  //  printf("Configuring distributed clock... ");
    ecx_configdc(context);
-   printf("done\n");
+  //  printf("done\n");
 
-   printf("Waiting for all slaves in safe operational... ");
+  //  printf("Waiting for all slaves in safe operational... ");
    ecx_statecheck(context, 0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE * 4);
-   printf("done\n");
+  //  printf("done\n");
 
-   printf("Send a roundtrip to make outputs in slaves happy... ");
+  //  printf("Send a roundtrip to make outputs in slaves happy... ");
    fieldbus_roundtrip(fieldbus);
-   printf("done\n");
+  //  printf("done\n");
 
    printf("Setting operational state.. \n");
    /* Act on slave 0 (a virtual slave used for broadcasting) */
@@ -151,9 +151,9 @@ fieldbus_start(Fieldbus *fieldbus)
       slave = context->slavelist + i;
       if (slave->state != EC_STATE_OPERATIONAL)
       {
-         printf(" slave %d is 0x%04X (AL-status=0x%04X %s)",
-                i, slave->state, slave->ALstatuscode,
-                ec_ALstatuscode2string(slave->ALstatuscode));
+        //  printf(" slave %d is 0x%04X (AL-status=0x%04X %s)",
+        //         i, slave->state, slave->ALstatuscode,
+        //         ec_ALstatuscode2string(slave->ALstatuscode));
       }
    }
    printf("\n");
@@ -240,13 +240,13 @@ fieldbus_check_state(Fieldbus *fieldbus)
          grp->docheckstate = TRUE;
          if (slave->state == EC_STATE_SAFE_OP + EC_STATE_ERROR)
          {
-            printf("* Slave %d is in SAFE_OP+ERROR, attempting ACK\n", i);
+            // printf("* Slave %d is in SAFE_OP+ERROR, attempting ACK\n", i);
             slave->state = EC_STATE_SAFE_OP + EC_STATE_ACK;
             ecx_writestate(context, i);
          }
          else if (slave->state == EC_STATE_SAFE_OP)
          {
-            printf("* Slave %d is in SAFE_OP, change to OPERATIONAL\n", i);
+            // printf("* Slave %d is in SAFE_OP, change to OPERATIONAL\n", i);
             slave->state = EC_STATE_OPERATIONAL;
             ecx_writestate(context, i);
          }
@@ -255,7 +255,7 @@ fieldbus_check_state(Fieldbus *fieldbus)
             if (ecx_reconfig_slave(context, i, EC_TIMEOUTRET))
             {
                slave->islost = FALSE;
-               printf("* Slave %d reconfigured\n", i);
+              //  printf("* Slave %d reconfigured\n", i);
             }
          }
          else if (!slave->islost)
@@ -264,7 +264,7 @@ fieldbus_check_state(Fieldbus *fieldbus)
             if (slave->state == EC_STATE_NONE)
             {
                slave->islost = TRUE;
-               printf("* Slave %d lost\n", i);
+              //  printf("* Slave %d lost\n", i);
             }
          }
       }
@@ -273,12 +273,12 @@ fieldbus_check_state(Fieldbus *fieldbus)
          if (slave->state != EC_STATE_NONE)
          {
             slave->islost = FALSE;
-            printf("* Slave %d found\n", i);
+            // printf("* Slave %d found\n", i);
          }
          else if (ecx_recover_slave(context, i, EC_TIMEOUTRET))
          {
             slave->islost = FALSE;
-            printf("* Slave %d recovered\n", i);
+            // printf("* Slave %d recovered\n", i);
          }
       }
    }
@@ -291,7 +291,7 @@ fieldbus_check_state(Fieldbus *fieldbus)
 
 int main(int argc, char *argv[])
 {
-  if (argc < 3) {
+  if (argc < 2) {
     printf("[ERROR] args invalid!\n");
     return 1;
   }
@@ -301,6 +301,7 @@ int main(int argc, char *argv[])
   uint32_t repeat_cnt = 1000000;
   int num_competition_process = atoi(argv[1]);
   int tsx_us = atoi(argv[2]);
+  // int log_num = atoi(argv[2]);
 
   int interval_usec = 30;
   double CPU_HZ = 2000000000.0;
@@ -317,6 +318,11 @@ int main(int argc, char *argv[])
   sprintf(log_name, "log/tsx_%dus/rtt_dpdk_tsx_c%d.log", tsx_us, num_competition_process);
 
   FILE *log_fp = fopen(log_name, "w");
+
+  // tsx log file
+  #if USE_TSX
+  FILE *tsx_log_fp = fopen("log/tsx_grant.log", "a");
+  #endif
 
   if (log_fp == NULL) {
     printf("Failed to open log files\n");
@@ -369,7 +375,7 @@ int main(int argc, char *argv[])
     context = &(fieldbus.context);
     grp = context->grouplist + fieldbus.group;
 
-    printf("[INFO] Using standard SOEM for processdata transfer\n");
+    // printf("[INFO] Using standard SOEM for processdata transfer\n");
 
     printf("[INFO] send cnt: %d\n", global_send_cnt);
     printf("[INFO] recv cnt: %d\n", global_recv_cnt);
@@ -433,26 +439,19 @@ int main(int argc, char *argv[])
     for (int i = 0; i < repeat_cnt; i++) {
       // micro second
       double rtt_usec = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
-      fprintf(log_fp, "%.9f\n", rtt_usec);
-
-      // rtt_sum += rtt;
-      // if (rtt < 500.0) {
-      //   rtt_avg_ndelay += rtt;
-      // } 
-      // else {
-      //   delay_count++;
-      // }
+      fprintf(log_fp, "%.6f\n", rtt_usec);
     }
 
-    // rtt_avg_ndelay /= (double)(repeat_cnt - delay_count);
-    // rtt_avg = rtt_sum / repeat_cnt;
-    // cycle_avg = cycle_sum / repeat_cnt;
-    // processing_time = (double)(rdtsc_end - rdtsc_start) / CPU_HZ * 1000000;
-
-    // fprintf(report_fp, "%.9f,", processing_time - cycle_sum);
-    // fprintf(report_fp, "%.9f\n", (rtt_avg + (double)interval_usec) * repeat_cnt);
+    #if USE_TSX
+    fprintf(tsx_log_fp, "tsx=%dus,comp=%d,granted=%d,yield_failed=%d\n", tsx_us, num_competition_process, global_tsx_granted_cnt, global_tsx_granted_err_cnt);
+    #endif
 
     fclose(log_fp);
+
+    #if USE_TSX
+    fclose(tsx_log_fp);
+    #endif
+
 
     // printf("\nRoundtrip time (usec): min %d max %d\n", min_time, max_time);
   }

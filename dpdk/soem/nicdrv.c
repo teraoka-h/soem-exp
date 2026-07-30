@@ -246,9 +246,9 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
 	if (retval != 0)
 		return retval;
 
-	printf("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
-			port_id, RTE_ETHER_ADDR_BYTES(&mac));
+	// printf("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+	// 		   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
+	// 		port_id, RTE_ETHER_ADDR_BYTES(&mac));
 
   rte_eth_macaddr_get(port_id, &mac);
 
@@ -262,7 +262,7 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
   struct rte_eth_link link;
   memset(&link, 0, sizeof(link));
 
-  printf("Waiting for link...\n");
+  // printf("Waiting for link...\n");
 
   uint8_t rep_cnt = 0;
 
@@ -273,8 +273,8 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
       sleep(1);
   } while (++rep_cnt <= 10);
 
-  printf("Link status: %s\n",
-        link.link_status ? "UP" : "DOWN");
+  // printf("Link status: %s\n",
+  //       link.link_status ? "UP" : "DOWN");
 
   // for (int i = 0; i < 10; i++) {
   //     rte_eth_link_get_nowait(port_id, &link);
@@ -586,6 +586,8 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
   rtt_end[io_cnt] = __rdtsc();
 
   #if USE_TSX
+   ts_ext_set_request(0);
+
    if (ts_ext_is_granted()) {
       // time slice extension granted, yield to other process
       int ret = ts_ext_rseq_yield();
@@ -603,7 +605,6 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
       }
    }
 
-   ts_ext_set_request(0);
   #endif
 
   uint16_t len = rte_pktmbuf_pkt_len(mbuf[0]);
