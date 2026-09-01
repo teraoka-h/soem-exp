@@ -6,6 +6,7 @@ SOEM_PROCESS=./soem_dpdk
 # SOEM_COMM_COUNT=$1
 # SOEM_LOG_PREFIX=$2
 COMPETITION_COUNT=$1
+TSX_US=$2
 
 echo "--- SOEM: loop-cnt=$SOEM_COMM_COUNT, prefix=$SOEM_LOG_PREFIX"
 echo "--- COMPETITION: process: $COMPETITION_COUNT"
@@ -55,7 +56,7 @@ echo "--- COMPETITION: process: $COMPETITION_COUNT"
   done
 
 # soem processを起動
-GLIBC_TUNABLES=glibc.pthread.rseq=0 nice -n 0 ${SOEM_PROCESS} ${COMPETITION_COUNT}
+GLIBC_TUNABLES=glibc.pthread.rseq=0 nice -n 0 ${SOEM_PROCESS} ${COMPETITION_COUNT} ${TSX_US}
 
 # 競合プロセスを全て終了
 sudo pkill -KILL -f ${COMPETITION_PROCESS}

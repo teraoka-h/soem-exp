@@ -303,7 +303,7 @@ int main(int argc, char *argv[])
 
   // init logfile
   char log_name[256];
-  sprintf(log_name, "log/rtt_syscall_tsx_5us_c%d.log", num_competition_process);
+  sprintf(log_name, "log/rtt_syscall_notsx_c%d.log", num_competition_process);
 
   FILE *log_fp = fopen(log_name, "w");
   if (log_fp == NULL) {

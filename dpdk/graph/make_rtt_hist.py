@@ -15,7 +15,7 @@ def main():
 
     filepath = sys.argv[1]
     num_competition_process = sys.argv[2]
-    title_label = sys.argv[4]
+    # title_label = sys.argv[4]
     rtt_list = []
 
     # if "soem" in filepath:
@@ -70,22 +70,23 @@ def main():
 
     # y 軸対数で freq=1 を必ず表示させる
     plt.yscale('log')
-    plt.ylim(0.15, max(n) * 1.2 if len(n) > 0 else 10)
+    # plt.ylim(0.15, max(n) * 1.2 if len(n) > 0 else 10)
+    plt.ylim(0.15, 10000)
 
-    if sys.argv[3] != None:
-       xlim = int(sys.argv[3])
-    else:
-      if max_rtt > BASE_MAX_RTT:
-        xlim = max_rtt // 1000 * 1000 + 1000
-      else:
-        xlim = BASE_MAX_RTT
-    print(f"[INFO] xlim set to {xlim} us")
+    # if sys.argv[3] != None:
+    #    xlim = int(sys.argv[3])
+    # else:
+    #   if max_rtt > BASE_MAX_RTT:
+    #     xlim = max_rtt // 1000 * 1000 + 1000
+    #   else:
+    #     xlim = BASE_MAX_RTT
+    # print(f"[INFO] xlim set to {xlim} us")
 
-    plt.xlim(0, xlim)
-    plt.title(f'{title_label} での RTT の分布\n'
-              f'(ビン幅: {BIN_US_WIDTH}us, 通信回数: {len(rtt_list)}, 競合プロセス数: {num_competition_process}, 500 us 超過回数: {len(rtt_over)})', fontsize=15)
-    plt.xlabel('処理時間 (us)', fontsize=24)
-    plt.ylabel('頻度 (log scale)', fontsize=24)
+    plt.xlim(0, 23000)
+    # plt.title(f'{title_label} での RTT の分布\n'
+    #           f'(ビン幅: {BIN_US_WIDTH}us, 通信回数: {len(rtt_list)}, 競合プロセス数: {num_competition_process}, 500 us 超過回数: {len(rtt_over)})', fontsize=15)
+    plt.xlabel('処理時間 (us)', fontsize=18)
+    plt.ylabel('頻度 (log scale)', fontsize=18)
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -97,15 +98,15 @@ def main():
     rtt_over = [rtt for rtt in rtt_list if rtt > OVER_THRESHOD_US]
     # for rtt in rtt_over:
     #     print(f"{rtt:.2f} us")
-    print(f"RTT > {OVER_THRESHOD_US} us count: {len(rtt_over)} / ({len(rtt_list)})")
-    print("min:", min(rtt_list))
-    print("median:", np.percentile(rtt_list, 50))
-    print("90%:", np.percentile(rtt_list, 90))
-    print("95%:", np.percentile(rtt_list, 95))
-    print("99%:", np.percentile(rtt_list, 99))
-    print("99.9%:", np.percentile(rtt_list, 99.9))
-    print("mean:", np.mean(rtt_list))
-    print("max:", max(rtt_list))
+    # print(f"RTT > {OVER_THRESHOD_US} us count: {len(rtt_over)} / ({len(rtt_list)})")
+    # print("min:", min(rtt_list))
+    # print("median:", np.percentile(rtt_list, 50))
+    # print("90%:", np.percentile(rtt_list, 90))
+    # print("95%:", np.percentile(rtt_list, 95))
+    # print("99%:", np.percentile(rtt_list, 99))
+    # print("99.9%:", np.percentile(rtt_list, 99.9))
+    # print("mean:", np.mean(rtt_list))
+    # print("max:", max(rtt_list))
 
 
 if __name__ == "__main__":

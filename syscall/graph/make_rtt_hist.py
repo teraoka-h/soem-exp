@@ -15,7 +15,7 @@ def main():
 
     filepath = sys.argv[1]
     num_competition_process = sys.argv[2]
-    title_label = sys.argv[4]
+    # title_label = sys.argv[4]
     rtt_list = []
 
     # if "soem" in filepath:
@@ -83,7 +83,7 @@ def main():
     print(f"[INFO] xlim set to {xlim} us")
 
     plt.xlim(0, xlim)
-    plt.title(f'{title_label} での RTT の分布\n'
+    plt.title(f'システムコール実装での RTT の分布\n'
               f'(ビン幅: {BIN_US_WIDTH}us, 通信回数: {len(rtt_list)}, 競合プロセス数: {num_competition_process}, 500 us 超過回数: {len(rtt_over)})', fontsize=15)
     plt.xlabel('処理時間 (us)', fontsize=18)
     plt.ylabel('頻度 (log scale)', fontsize=18)
