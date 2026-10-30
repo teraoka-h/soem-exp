@@ -292,9 +292,12 @@ int main(int argc, char *argv[])
   int num_competition_process = atoi(argv[1]);
   int tsx_us = atoi(argv[2]);
   int day = atoi(argv[3]);
+  int id = atoi(argv[4]);
 
   int interval_usec = 30;
   double CPU_HZ = 2000000000.0;
+
+  io_cnt = 0; 
 
   Fieldbus fieldbus;
   ecx_contextt *context;
@@ -306,16 +309,23 @@ int main(int argc, char *argv[])
   // init logfile
   char log_name[256];
   #if !USE_SQPOLL
-  sprintf(log_name, "log/%d/tsx_%dus/rtt_iouring_c%d.log", day, tsx_us, num_competition_process);
+  sprintf(log_name, "log/%d/tsx_%dus/rtt_iouring_c%d_id%d.log", day, tsx_us, num_competition_process, id);
   #else
   sprintf(log_name, "log/rtt_iouring_sqpoll_nsleep_c%d.log", num_competition_process);
+  #endif
+
+  // tsx io_cnt log file
+  #if USE_TSX
+  char tsx_io_cnt_log_name[256];
+  sprintf(tsx_io_cnt_log_name, "log/%d/tsx_%dus/tsx_io_cnt_c%d_id%d.log", day, tsx_us, num_competition_process, id);
+  FILE *tsx_io_cnt_log_fp = fopen(tsx_io_cnt_log_name, "a");
   #endif
 
   FILE *log_fp = fopen(log_name, "w");
   // tsx log file
   #if USE_TSX
   char tsx_log_name[256];
-  sprintf(tsx_log_name, "log/tsx_%dus/tsx_grant.log", tsx_us);
+  sprintf(tsx_log_name, "log/%d/tsx_%dus/tsx_grant.log", day, tsx_us);
   FILE *tsx_log_fp = fopen(tsx_log_name, "a");
   #endif
 
@@ -422,12 +432,19 @@ int main(int argc, char *argv[])
 
     #if USE_TSX
     fprintf(tsx_log_fp, "tsx=%dus,comp=%d,granted=%d,denied=%d\n", tsx_us, num_competition_process, global_tsx_granted_cnt, global_tsx_granted_err_cnt);
+
+    for (int i = 0; i < global_tsx_granted_cnt; i++) {
+      int cnt = tsx_io_list[i];
+      double rtt_usec = (double)(rtt_end[cnt] - rtt_start[cnt]) / CPU_HZ * 1000000;
+      fprintf(tsx_io_cnt_log_fp, "%d, %.6f\n", cnt + 1, rtt_usec);
+    }
     #endif
 
     fclose(log_fp);
 
     #if USE_TSX
     fclose(tsx_log_fp);
+    fclose(tsx_io_cnt_log_fp);
     #endif
 
     // printf("\nRoundtrip time (usec): min %d max %d\n", min_time, max_time);

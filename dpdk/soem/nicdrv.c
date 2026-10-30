@@ -586,8 +586,6 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
   rtt_end[io_cnt] = __rdtsc();
 
   #if USE_TSX
-   ts_ext_set_request(0);
-
    if (ts_ext_is_granted()) {
       // time slice extension granted, yield to other process
       int ret = ts_ext_rseq_yield();
@@ -604,6 +602,8 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
           // printf("[TSX] Yielded to other process io_%d\n", io_cnt);
       }
    }
+
+   ts_ext_set_request(0);
 
   #endif
 

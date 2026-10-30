@@ -1,12 +1,13 @@
 import sys
 import matplotlib.pyplot as plt
 import os
-import japanize_matplotlib
+import matplotlib_fontja
 import numpy as np
 
 BASE_MAX_RTT = 4000  # Threshold for highlighting RTT values
-BIN_US_WIDTH = 15  # Width of histogram bins in microseconds
-OVER_THRESHOD_US = 500
+# BIN_US_WIDTH = 15  # Width of histogram bins in microseconds
+BIN_US_WIDTH = 25  # Width of histogram bins in microseconds
+OVER_THRESHOD_US = 50
 
 def main():
     if len(sys.argv) < 2:
@@ -15,7 +16,6 @@ def main():
 
     filepath = sys.argv[1]
     num_competition_process = sys.argv[2]
-    # title_label = sys.argv[4]
     rtt_list = []
 
     # if "soem" in filepath:
@@ -36,6 +36,8 @@ def main():
     # 入力ファイルの拡張子取得
     base = os.path.splitext(os.path.basename(filepath))[0]
     save_filename = base + '_rtt_hist.png'
+    # 第4引数のディレクトリ名直下に保存する
+    save_filename = os.path.join(sys.argv[4], save_filename) if len(sys.argv) > 4 else save_filename
 
     mean_rtt = sum(rtt_list) / len(rtt_list)
     max_rtt = max(rtt_list)
@@ -71,20 +73,20 @@ def main():
     # y 軸対数で freq=1 を必ず表示させる
     plt.yscale('log')
     # plt.ylim(0.15, max(n) * 1.2 if len(n) > 0 else 10)
-    plt.ylim(0.15, 10000)
+    plt.ylim(0.15, 1000000)
 
-    # if sys.argv[3] != None:
-    #    xlim = int(sys.argv[3])
-    # else:
-    #   if max_rtt > BASE_MAX_RTT:
-    #     xlim = max_rtt // 1000 * 1000 + 1000
-    #   else:
-    #     xlim = BASE_MAX_RTT
-    # print(f"[INFO] xlim set to {xlim} us")
+    if sys.argv[3] != None:
+       xlim = int(sys.argv[3])
+    else:
+      if max_rtt > BASE_MAX_RTT:
+        xlim = max_rtt // 1000 * 1000 + 1000
+      else:
+        xlim = BASE_MAX_RTT
+    print(f"[INFO] xlim set to {xlim} us")
 
-    plt.xlim(0, 23000)
-    # plt.title(f'{title_label} での RTT の分布\n'
-    #           f'(ビン幅: {BIN_US_WIDTH}us, 通信回数: {len(rtt_list)}, 競合プロセス数: {num_competition_process}, 500 us 超過回数: {len(rtt_over)})', fontsize=15)
+    plt.xlim(0, xlim)
+    plt.title(f'DPDK 実装での RTT の分布\n'
+              f'(ビン幅: {BIN_US_WIDTH}us, 通信回数: {len(rtt_list)}, 競合プロセス数: {num_competition_process}, 500 us 超過回数: {len(rtt_over)})', fontsize=15)
     plt.xlabel('処理時間 (us)', fontsize=18)
     plt.ylabel('頻度 (log scale)', fontsize=18)
     plt.legend()

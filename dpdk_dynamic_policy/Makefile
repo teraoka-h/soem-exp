@@ -7,7 +7,7 @@ TSX_KERNEL_LIB_PATH = /tmp/linux-headers/include
 TSX_LIB = ../ts_ext/ts_ext.c
 
 SOEM_SRCS = $(wildcard soem/*.c)
-SOEM_SRCS += ${TSX_LIB}
+SOEM_SRCS += dynamic_sched.c
 SOEM_OBJS = $(patsubst %.c, %.o, $(notdir ${SOEM_SRCS}))
 ARCHIVE_FILE = libsoem.a
 UTILS = $(wildcard ../utils/*.c)

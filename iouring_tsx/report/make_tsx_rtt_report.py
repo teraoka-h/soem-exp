@@ -20,6 +20,7 @@ def calc_metrics(data):
         "std": np.std(data),
         "max": np.max(data),
         "p99": np.percentile(data, 99),
+        "p999": np.percentile(data, 99.9),
     }
 
 
@@ -45,6 +46,7 @@ def main():
         "std": [],
         "max": [],
         "p99": [],
+        "p999": [],
     }
 
     # TSX_VALUES に，tsx_0us も加える
@@ -58,6 +60,7 @@ def main():
             "std": [tsx],
             "max": [tsx],
             "p99": [tsx],
+            "p999": [tsx],
         }
 
         for comp in COMP_VALUES:

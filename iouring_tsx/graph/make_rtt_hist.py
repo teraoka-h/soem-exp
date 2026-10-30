@@ -1,11 +1,12 @@
 import sys
 import matplotlib.pyplot as plt
 import os
-import japanize_matplotlib
+import matplotlib_fontja
 import numpy as np
 
 BASE_MAX_RTT = 4000  # Threshold for highlighting RTT values
 BIN_US_WIDTH = 15  # Width of histogram bins in microseconds
+# BIN_US_WIDTH = 1  # Width of histogram bins in microseconds
 OVER_THRESHOD_US = 500
 
 def main():
@@ -15,6 +16,7 @@ def main():
 
     filepath = sys.argv[1]
     num_competition_process = sys.argv[2]
+    # id = sys.argv[3]
     rtt_list = []
 
     # if "soem" in filepath:
@@ -34,7 +36,7 @@ def main():
 
     # 入力ファイルの拡張子取得
     base = os.path.splitext(os.path.basename(filepath))[0]
-    save_filename = base + '_rtt_hist.png'
+    save_filename = 'tsx_50us/' + base + '_rtt_hist.png'
 
     mean_rtt = sum(rtt_list) / len(rtt_list)
     max_rtt = max(rtt_list)

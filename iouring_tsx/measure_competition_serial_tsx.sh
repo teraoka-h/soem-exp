@@ -12,6 +12,9 @@ MIN_TSX_US=$1
 # 日付を引数から取得
 DAY=$3
 
+# 測定ID
+ID=$4
+
 # 最小拡張タイムスライス時間から最大拡張タイムスライス時間まで、1 マイクロ秒刻みで測定を行う
 for tsx_us in $(seq $MIN_TSX_US $MAX_TSX_US)
 do
@@ -30,7 +33,7 @@ do
   fi
 
   # log ファイル用ディレクトリを作成
-  log_dir="log/tsx_${tsx_us}us"
+  log_dir="log/${DAY}/tsx_${tsx_us}us"
   mkdir -p $log_dir
 
   # 競合プロセス数ごとに測定を行う
@@ -40,6 +43,6 @@ do
   do
     # tsx_us と競合プロセス数を表示
     echo "=== Measuring with TSX US: $tsx_us and Competition Processes: $num_processes ==="
-    $BASE_MEASURE_SCRIPT $num_processes $tsx_us $DAY
+    $BASE_MEASURE_SCRIPT $num_processes $tsx_us $DAY $ID
   done
 done

@@ -60,10 +60,11 @@
 #include "../../utils/utils.h"
 #include "log_config.h"
 #include "../exp_config.h"
+#include "../dynamic_sched.h"
 
-#if USE_TSX
-#include "../../ts_ext/ts_ext.h"
-#endif
+// #if USE_TSX
+// #include "../../ts_ext/ts_ext.h"
+// #endif
 
 // DPDK メモリプール
 uint16_t port_id = 0; // NIC が一つだけのため，ID は 0
@@ -474,9 +475,20 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
   uint8_t *dst = rte_pktmbuf_append(mbuf, lp);
   rte_memcpy(dst, (*stack->txbuf)[idx], lp);
 
-  #if USE_TSX
-   ts_ext_set_request(1);
-  #endif
+  // #if USE_TSX
+  //  ts_ext_set_request(1);
+  // #endif
+
+  // RT ポリシに変更
+  if (is_exp_loop) {
+    tsc_start_to_fifo[io_cnt] = __rdtsc();
+    int ret = set_rt_policy(SCHED_FIFO, 1);
+    tsc_end_to_fifo[io_cnt] = __rdtsc();
+
+    if (ret != 0) {
+      printf("Failed to set real-time scheduling policy: %d\n", ret);
+    }
+  }
 
   rtt_start[io_cnt] = __rdtsc();
 
@@ -585,27 +597,38 @@ static int ecx_recvpkt(ecx_portt *port, int stacknumber)
 //  bytesrx = recv(*stack->sock, (*stack->tempbuf), lp, MSG_DONTWAIT);
   rtt_end[io_cnt] = __rdtsc();
 
-  #if USE_TSX
-   ts_ext_set_request(0);
+  if (is_exp_loop) {
+    tsc_start_to_normal[io_cnt] = __rdtsc();
+    int ret = set_normal_policy();
+    tsc_end_to_normal[io_cnt] = __rdtsc();
 
-   if (ts_ext_is_granted()) {
-      // time slice extension granted, yield to other process
-      int ret = ts_ext_rseq_yield();
+    if (ret != 0) {
+      printf("Failed to set standard scheduling policy: %d\n", ret);
+    }
+  }
 
-      tsx_io_list[global_tsx_granted_cnt] = io_cnt;
 
-      if (ret < 0) {
-        tsx_io_list[global_tsx_granted_err_cnt] = io_cnt;
-        global_tsx_granted_err_cnt++;
-        //  printf("[ERROR] failed to yield to other process (io: %d)\n", io_cnt);
-      }
-      else {
-          global_tsx_granted_cnt++;
-          // printf("[TSX] Yielded to other process io_%d\n", io_cnt);
-      }
-   }
+  // #if USE_TSX
+  //  ts_ext_set_request(0);
 
-  #endif
+  //  if (ts_ext_is_granted()) {
+  //     // time slice extension granted, yield to other process
+  //     int ret = ts_ext_rseq_yield();
+
+  //     tsx_io_list[global_tsx_granted_cnt] = io_cnt;
+
+  //     if (ret < 0) {
+  //       tsx_io_list[global_tsx_granted_err_cnt] = io_cnt;
+  //       global_tsx_granted_err_cnt++;
+  //       //  printf("[ERROR] failed to yield to other process (io: %d)\n", io_cnt);
+  //     }
+  //     else {
+  //         global_tsx_granted_cnt++;
+  //         // printf("[TSX] Yielded to other process io_%d\n", io_cnt);
+  //     }
+  //  }
+
+  // #endif
 
   uint16_t len = rte_pktmbuf_pkt_len(mbuf[0]);
   uint8_t *data = rte_pktmbuf_mtod(mbuf[0], uint8_t *);

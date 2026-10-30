@@ -11,11 +11,15 @@
 #include "soem/log_config.h"
 #include "../utils/utils.h"
 
+#include "dynamic_sched.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <time.h>
+#include <signal.h>
+
 
 // for dpdk
 #include <rte_eal.h>
@@ -24,11 +28,11 @@
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
 
-#include "exp_config.h"
+// #include "exp_config.h"
 
-#if USE_TSX
-#include "../ts_ext/ts_ext.h"
-#endif
+// #if USE_TSX
+// #include "../ts_ext/ts_ext.h"
+// #endif
 
 #define MEASURE_POLLLING 0
 #define MAX_LIST_SIZE 1000000
@@ -299,12 +303,14 @@ int main(int argc, char *argv[])
   // valiables for test
   char nic[10] = "enp3s0";
   uint32_t repeat_cnt = 1000000;
-  int num_competition_process = atoi(argv[1]);
-  int tsx_us = atoi(argv[2]);
-  // int log_num = atoi(argv[2]);
+  // int num_competition_process = atoi(argv[1]);
+  int day = atoi(argv[1]);
+  int countup_pid = atoi(argv[2]);
+  // int id = atoi(argv[3]);
 
   int interval_usec = 30;
   double CPU_HZ = 2000000000.0;
+  io_cnt = 0;
 
   Fieldbus fieldbus;
   ecx_contextt *context;
@@ -314,20 +320,24 @@ int main(int argc, char *argv[])
 
   // init logfile
   char log_name[256];
-
-  sprintf(log_name, "log/tsx_%dus/rtt_dpdk_tsx_c%d.log", tsx_us, num_competition_process);
-
+  sprintf(log_name, "log/%d/rtt_dpdk_dp_overhead.log", day);
   FILE *log_fp = fopen(log_name, "w");
-
-  // tsx log file
-  #if USE_TSX
-  FILE *tsx_log_fp = fopen("log/tsx_grant.log", "a");
-  #endif
-
   if (log_fp == NULL) {
     printf("Failed to open log files\n");
     return 1;
   }
+
+  char overhead_log_name[256];
+  sprintf(overhead_log_name, "log/%d/setscheduler_overhead.log", day);
+  FILE *overhead_log_fp = fopen(overhead_log_name, "w");
+  if (overhead_log_fp == NULL) {
+    printf("Failed to open overhead log files\n");
+    return 1;
+  }
+
+  char elapsed_log_name[256];
+  sprintf(elapsed_log_name, "log/%d/elapsed.log", day);
+  FILE *elapsed_log_fp = fopen(elapsed_log_name, "w");
 
   // dpdk 初期化
   int ret = rte_eal_init(argc - 1, &argv[1]);
@@ -340,13 +350,24 @@ int main(int argc, char *argv[])
     rte_exit(EXIT_FAILURE, "[ERROR] Cannot fing available port\n");
   }
 
-  #if USE_TSX
-  if (ts_ext_init() < 0) {
-    printf("[ERROR] failed to initialize time slice extension\n");
+  // SOEM の PID を取得して、dynamic_sched.c に渡す
+  int pid = getpid();
+  set_soem_pid(pid);
+
+  if (soem_pid == 0) {
+    printf("[ERROR] failed to get soem pid\n");
     return 1;
   }
-  printf("[INFO] time slice extension initialized\n");
-  #endif
+
+  printf("[INFO] soem pid: %d\n", soem_pid);
+
+  // #if USE_TSX
+  // if (ts_ext_init() < 0) {
+  //   printf("[ERROR] failed to initialize time slice extension\n");
+  //   return 1;
+  // }
+  // printf("[INFO] time slice extension initialized\n");
+  // #endif
 
   fieldbus_initialize(&fieldbus, nic);
   if (fieldbus_start(&fieldbus))
@@ -365,11 +386,17 @@ int main(int argc, char *argv[])
     uint64_t rdtsc_start, rdtsc_end;
     //
 
+    is_exp_loop = 1;
+
     // レコード用配列をなめる
     unsigned long long dummy = 0;
-    for (int i = 0; i < MAX_IO_COUNT; i++) {
+    for (int i = 0; i < 1000000; i++) {
       rtt_start[i] = dummy;
       rtt_end[i] = dummy;
+      tsc_start_to_fifo[i] = dummy;
+      tsc_end_to_fifo[i] = dummy;
+      tsc_start_to_normal[i] = dummy;
+      tsc_end_to_normal[i] = dummy;
     }
 
     context = &(fieldbus.context);
@@ -381,6 +408,15 @@ int main(int argc, char *argv[])
     printf("[INFO] recv cnt: %d\n", global_recv_cnt);
 
     printf("----- [ Round trip start ] -----\n");
+
+    /**
+     * カウントアッププロセスにシグナルを送信して，カウントアップを開始させる
+     */
+
+    if (kill(countup_pid, SIGUSR1) == -1) {
+      perror("[ERROR] Failed to send signal to countup process");
+      return 1;
+    }
 
     // mark_trace_label("MEASURE_BEGIN");
     rdtsc_start = __rdtsc();
@@ -395,8 +431,6 @@ int main(int argc, char *argv[])
       ecx_send_processdata(context);
       wkc = ecx_receive_processdata(context, EC_TIMEOUTRET);
       #endif 
-
-      // printf("!!! Round Trip !!!\n");
 
       expected_wkc = grp->outputsWKC * 2 + grp->inputsWKC;
       if (wkc == EC_NOFRAME)
@@ -415,17 +449,31 @@ int main(int argc, char *argv[])
     rdtsc_end = __rdtsc();
     // mark_trace_label("MEASURE_END");
 
+    /**
+     * カウントアッププロセスにシグナルを送信して，カウントアップを終了させる
+     */
+
+    if (kill(countup_pid, SIGUSR1) == -1) {
+      perror("[ERROR] Failed to send signal to countup process");
+      return 1;
+    }
+
+    is_exp_loop = 0;
+
     fieldbus_stop(&fieldbus);
+
+    double elapsed = (double)(rdtsc_end - rdtsc_start) / CPU_HZ;
+
 
     printf("\n[INFO] send cnt: %d\n", global_send_cnt);
     printf("[INFO] recv cnt: %d\n", global_recv_cnt);
     printf("[INFO] send_err cnt:  %d\n", global_send_err_cnt);
     printf("[INFO] recv_timout cnt:  %d\n", global_recv_timeout_cnt);
-    printf("[INFO] elapsed (s): %.6f\n", (double)(rdtsc_end - rdtsc_start) / CPU_HZ);
-    #if USE_TSX
-    printf("\n[INFO] tsx granted cnt:  %d\n", global_tsx_granted_cnt);
-    printf("\n[INFO] tsx granted err cnt:  %d\n", global_tsx_granted_err_cnt);
-    #endif
+    printf("[INFO] elapsed (s): %.6f\n", elapsed);
+    // #if USE_TSX
+    // printf("\n[INFO] tsx granted cnt:  %d\n", global_tsx_granted_cnt);
+    // printf("\n[INFO] tsx granted err cnt:  %d\n", global_tsx_granted_err_cnt);
+    // #endif
 
     double processing_time = (rdtsc_end - rdtsc_start) / CPU_HZ;
     printf("[INFO] processing time: %.9f (s)\n", processing_time);
@@ -440,17 +488,26 @@ int main(int argc, char *argv[])
       // micro second
       double rtt_usec = (double)(rtt_end[i] - rtt_start[i]) / CPU_HZ * 1000000;
       fprintf(log_fp, "%.6f\n", rtt_usec);
+
+      double overhead_to_fifo_usec = (double)(tsc_end_to_fifo[i] - tsc_start_to_fifo[i]) / CPU_HZ * 1000000;
+      double overhead_to_normal_usec = (double)(tsc_end_to_normal[i] - tsc_start_to_normal[i]) / CPU_HZ * 1000000;
+      fprintf(overhead_log_fp, "%.6f,%.6f\n", overhead_to_fifo_usec, overhead_to_normal_usec);
     }
 
-    #if USE_TSX
-    fprintf(tsx_log_fp, "tsx=%dus,comp=%d,granted=%d,yield_failed=%d\n", tsx_us, num_competition_process, global_tsx_granted_cnt, global_tsx_granted_err_cnt);
-    #endif
+    fprintf(elapsed_log_fp, "elapsed: %.6f\n", elapsed);
+
+
+    // #if USE_TSX
+    // fprintf(tsx_log_fp, "tsx=%dus,comp=%d,granted=%d,yield_failed=%d\n", tsx_us, num_competition_process, global_tsx_granted_cnt, global_tsx_granted_err_cnt);
+    // #endif
 
     fclose(log_fp);
+    fclose(overhead_log_fp);
+    fclose(elapsed_log_fp);
 
-    #if USE_TSX
-    fclose(tsx_log_fp);
-    #endif
+    // #if USE_TSX
+    // fclose(tsx_log_fp);
+    // #endif
 
 
     // printf("\nRoundtrip time (usec): min %d max %d\n", min_time, max_time);

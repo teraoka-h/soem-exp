@@ -5,42 +5,32 @@ SOEM_PROCESS=./soem_dpdk
 
 # SOEM_COMM_COUNT=$1
 # SOEM_LOG_PREFIX=$2
-COMPETITION_COUNT=$1
-TSX_US=$2
+DAY=$1
+COMPETITION_COUNT=$2
+# TSX_US=$2
 
-echo "--- SOEM: loop-cnt=$SOEM_COMM_COUNT, prefix=$SOEM_LOG_PREFIX"
-echo "--- COMPETITION: process: $COMPETITION_COUNT"
-
-# # 指定個数だけ競合プロセスを起動
-# for i in {1..$COMPETITION_COUNT} 
-# do 
-#   systemd-run --scope ${COMPETITION_PROCESS} &
-#   pid=$!
-#   renice -n 0 -p "$pid"
-#   nice=
-#   # ${COMPETITION_PROCESS} &
-# done
+# log ファイル用ディレクトリを作成
+log_dir="log/${DAY}"
+mkdir -p $log_dir
 
 # 指定個数だけ競合プロセスを起動
-  if [ $COMPETITION_COUNT -ne 0 ]; then
-    for i in $(seq 1 $COMPETITION_COUNT)
-    do 
-      # systemd-run --scope ${COMPETITION_PROCESS} &
-      ${COMPETITION_PROCESS} &
-      pid=$!
-      renice -n 0 -p "$pid"
-    done
-  fi
-
-  # PROC_REAL_PATH=$(readlink -f ${COMPETITION_PROCESS})
+if [ "$COMPETITION_COUNT" -ne 0 ]; then
+  for i in $(seq 1 "$COMPETITION_COUNT")
+  do
+    "${COMPETITION_PROCESS}" &
+    pid=$!
+    renice -n 0 -p "$pid"
+  done
 
   retry=0
   max_retry=10
+
   while true
   do
     running=$(pgrep -f "${COMPETITION_PROCESS}" | wc -l)
     echo "競合プロセス実行数: ${running}"
-    if [ $running -eq $COMPETITION_COUNT ]; then
+
+    if [ "$running" -eq "$COMPETITION_COUNT" ]; then
       echo "競合プロセス数 OK: ${running}/${COMPETITION_COUNT}"
       break
     fi
@@ -54,9 +44,10 @@ echo "--- COMPETITION: process: $COMPETITION_COUNT"
     sleep 0.2
     retry=$((retry+1))
   done
+fi
 
 # soem processを起動
-GLIBC_TUNABLES=glibc.pthread.rseq=0 nice -n 0 ${SOEM_PROCESS} ${COMPETITION_COUNT} ${TSX_US}
+nice -n 0 ${SOEM_PROCESS} ${DAY} 
 
 # 競合プロセスを全て終了
 sudo pkill -KILL -f ${COMPETITION_PROCESS}
